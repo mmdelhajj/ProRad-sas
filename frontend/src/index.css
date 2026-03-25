@@ -1,0 +1,1235 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ================================================================
+   WinBox Design System - MES ISP Management
+   Classic Windows desktop application aesthetic
+   ================================================================ */
+
+@layer base {
+  body {
+    @apply bg-[#c0c0c0] text-gray-900 antialiased;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-size: 13px;
+  }
+
+  /* Desktop: scale up everything 10% for clearer view */
+  @media (min-width: 1024px) {
+    body {
+      zoom: 1.1;
+    }
+  }
+}
+
+@layer components {
+
+  /* ----------------------------------------------------------------
+     Buttons - 3D gradient style
+     ---------------------------------------------------------------- */
+  .btn {
+    @apply inline-flex items-center justify-center px-3 py-1 text-[11px] font-normal transition-colors
+           border border-[#a0a0a0] cursor-pointer select-none whitespace-nowrap;
+    background: linear-gradient(to bottom, #ffffff, #e8e8e8);
+    border-radius: 2px;
+    min-height: 24px;
+  }
+
+  .btn:hover {
+    background: linear-gradient(to bottom, #f0f0f0, #d8d8d8);
+  }
+
+  .btn:active {
+    background: linear-gradient(to bottom, #d0d0d0, #e0e0e0);
+  }
+
+  .btn:disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+
+  .btn-primary {
+    @apply btn text-white border-[#2d5a87];
+    background: linear-gradient(to bottom, #5a8abf, #3a6a9f);
+  }
+
+  .btn-primary:hover {
+    background: linear-gradient(to bottom, #4a7aaf, #2d5a87);
+  }
+
+  .btn-secondary {
+    @apply btn text-gray-700;
+  }
+
+  .btn-danger {
+    @apply btn text-white border-[#a93226];
+    background: linear-gradient(to bottom, #e74c3c, #c0392b);
+  }
+
+  .btn-danger:hover {
+    background: linear-gradient(to bottom, #d44336, #a93226);
+  }
+
+  .btn-success {
+    @apply btn text-white border-[#1e7e34];
+    background: linear-gradient(to bottom, #5cb85c, #449d44);
+  }
+
+  .btn-success:hover {
+    background: linear-gradient(to bottom, #4cae4c, #398439);
+  }
+
+  .btn-ghost {
+    @apply btn bg-transparent border-transparent text-gray-600;
+  }
+
+  .btn-ghost:hover {
+    @apply bg-gray-100 border-[#ccc];
+  }
+
+  .btn-sm {
+    @apply px-2 py-0.5 text-[11px];
+    min-height: 22px;
+  }
+
+  .btn-xs {
+    @apply px-1.5 py-0 text-[10px];
+    min-height: 20px;
+  }
+
+  /* ----------------------------------------------------------------
+     Inputs - Classic style
+     ---------------------------------------------------------------- */
+  .input {
+    @apply block w-full px-2 py-1 text-[11px] bg-white text-gray-900
+           border border-[#a0a0a0];
+    border-radius: 2px;
+    min-height: 24px;
+  }
+
+  .input:focus {
+    @apply outline-none border-[#316AC5];
+    box-shadow: 0 0 0 1px #316AC5;
+  }
+
+  .input:disabled {
+    @apply bg-gray-100 cursor-not-allowed text-gray-500;
+  }
+
+  .input-sm {
+    @apply px-1.5 py-0.5 text-[11px];
+    min-height: 22px;
+  }
+
+  .label {
+    @apply block text-[11px] font-medium text-gray-700 mb-0.5;
+  }
+
+  /* ----------------------------------------------------------------
+     Cards - Classic bordered panels
+     ---------------------------------------------------------------- */
+  .card {
+    @apply bg-white border border-[#a0a0a0];
+    border-radius: 2px;
+  }
+
+  .stat-card {
+    @apply card px-3 py-2;
+  }
+
+  .card-header {
+    @apply px-3 py-2 border-b border-[#a0a0a0];
+    background: linear-gradient(to bottom, #ffffff, #f0f0f0);
+  }
+
+  /* ----------------------------------------------------------------
+     Tables - WinBox style
+     ---------------------------------------------------------------- */
+  .table-container {
+    @apply overflow-x-auto border border-[#a0a0a0];
+    border-radius: 2px;
+  }
+
+  .table {
+    @apply min-w-full;
+    border-collapse: collapse;
+  }
+
+  .table th {
+    @apply px-2 py-1.5 text-left text-[11px] font-semibold text-gray-800 whitespace-nowrap
+           border-b-2 border-[#a0a0a0] border-r border-r-[#ccc] select-none cursor-pointer;
+    background: linear-gradient(to bottom, #ffffff, #e0e0e0);
+  }
+
+  .table th:last-child {
+    @apply border-r-0;
+  }
+
+  .table td {
+    @apply px-2 py-1 text-[11px] text-gray-900 whitespace-nowrap
+           border-b border-[#eee] border-r border-r-[#eee];
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .table td:last-child {
+    @apply border-r-0;
+  }
+
+  .table tbody tr:nth-child(odd) {
+    @apply bg-white;
+  }
+
+  .table tbody tr:nth-child(even) {
+    @apply bg-[#f7f7f7];
+  }
+
+  .table tbody tr:hover {
+    @apply bg-[#e8e8f0];
+  }
+
+  .table tbody tr.selected,
+  .table tbody tr.selected:nth-child(odd),
+  .table tbody tr.selected:nth-child(even) {
+    background-color: #cce0ff !important;
+    border-left: 3px solid #316AC5;
+  }
+
+  .table tbody tr.selected td {
+    color: #111827 !important;
+  }
+
+  .dark .table tbody tr.selected,
+  .dark .table tbody tr.selected:nth-child(odd),
+  .dark .table tbody tr.selected:nth-child(even) {
+    background-color: #2a4a6e !important;
+    border-left: 3px solid #5b9bd5;
+  }
+
+  .dark .table tbody tr.selected td {
+    color: #ffffff !important;
+  }
+
+  /* Compact table */
+  .table-compact th {
+    @apply px-1.5 py-1 text-[10px];
+  }
+
+  .table-compact td {
+    @apply px-1.5 py-0.5 text-[10px];
+  }
+
+  /* ----------------------------------------------------------------
+     Badges - Classic style
+     ---------------------------------------------------------------- */
+  .badge {
+    @apply inline-flex items-center px-1.5 py-0 text-[9px] font-semibold;
+    border-radius: 2px;
+    line-height: 16px;
+  }
+
+  .badge-success {
+    @apply badge bg-[#4CAF50] text-white;
+  }
+
+  .badge-danger {
+    @apply badge bg-[#f44336] text-white;
+  }
+
+  .badge-warning {
+    @apply badge bg-[#FF9800] text-white;
+  }
+
+  .badge-info {
+    @apply badge bg-[#2196F3] text-white;
+  }
+
+  .badge-gray {
+    @apply badge bg-[#9e9e9e] text-white;
+  }
+
+  .badge-primary {
+    @apply badge bg-[#316AC5] text-white;
+  }
+
+  .badge-purple {
+    @apply badge bg-[#9C27B0] text-white;
+  }
+
+  .badge-orange {
+    @apply badge bg-[#FF9800] text-white;
+  }
+
+  .badge-secondary {
+    @apply badge bg-[#757575] text-white;
+  }
+
+  .badge-cyan {
+    @apply badge bg-[#00BCD4] text-white;
+  }
+
+  .badge-indigo {
+    @apply badge bg-[#3F51B5] text-white;
+  }
+
+  /* ----------------------------------------------------------------
+     Modals - Classic dialog windows
+     ---------------------------------------------------------------- */
+  .modal-overlay {
+    @apply fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50;
+  }
+
+  .modal {
+    @apply bg-[#f0f0f0] border border-[#a0a0a0] flex flex-col;
+    border-radius: 2px;
+    min-width: 360px;
+    max-width: 90vw;
+    max-height: 90vh;
+    box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.3);
+  }
+
+  .modal-sm {
+    max-width: 400px;
+  }
+
+  .modal-lg {
+    max-width: 800px;
+    width: 100%;
+  }
+
+  .modal-xl {
+    max-width: 1200px;
+    width: 100%;
+  }
+
+  .modal-header {
+    @apply flex items-center justify-between px-3 py-2 border-b border-[#a0a0a0] text-white text-[11px] font-semibold;
+    background: linear-gradient(to bottom, #4a7ab5, #2d5a87);
+  }
+
+  .modal-body {
+    @apply px-3 py-3 overflow-y-auto flex-1 bg-[#f0f0f0] text-[11px];
+  }
+
+  .modal-footer {
+    @apply flex items-center justify-end gap-2 px-3 py-2 border-t border-[#a0a0a0] bg-[#f0f0f0];
+  }
+
+  /* ----------------------------------------------------------------
+     Tabs - WinBox style
+     ---------------------------------------------------------------- */
+  .wb-tab {
+    @apply px-3 py-1 text-[11px] font-medium border border-[#a0a0a0] border-b-0 cursor-pointer
+           bg-[#e0e0e0] text-gray-600 -mb-px;
+    border-radius: 2px 2px 0 0;
+  }
+
+  .wb-tab.active {
+    @apply bg-white text-gray-900 font-bold;
+    border-bottom-color: white;
+  }
+
+  /* ----------------------------------------------------------------
+     Toolbar - 3D gradient buttons area
+     ---------------------------------------------------------------- */
+  .wb-toolbar {
+    @apply flex items-center gap-1 px-2 py-1 border-b border-[#a0a0a0];
+    background: linear-gradient(to bottom, #f8f8f8, #e8e8e8);
+  }
+
+  .wb-toolbar-separator {
+    @apply w-px h-5 bg-[#a0a0a0] mx-1;
+  }
+
+  /* ----------------------------------------------------------------
+     Status bar
+     ---------------------------------------------------------------- */
+  .wb-statusbar {
+    @apply flex items-center justify-between px-3 py-1 text-[11px] text-gray-600
+           border-t border-[#a0a0a0] bg-[#f0f0f0];
+  }
+
+  /* ----------------------------------------------------------------
+     Stats row - Status dots
+     ---------------------------------------------------------------- */
+  .wb-status-dot {
+    @apply inline-block w-2 h-2 rounded-full mr-1;
+  }
+
+  /* ----------------------------------------------------------------
+     Usage bars - thin 4px
+     ---------------------------------------------------------------- */
+  .wb-usage-bar {
+    @apply w-full h-1 bg-[#e0e0e0];
+    border-radius: 1px;
+  }
+
+  .wb-usage-bar-fill {
+    @apply h-full;
+    border-radius: 1px;
+  }
+
+  /* ----------------------------------------------------------------
+     Tree navigation
+     ---------------------------------------------------------------- */
+  .wb-tree-item {
+    @apply flex items-center px-2 py-0.5 text-[11px] cursor-pointer select-none;
+  }
+
+  .wb-tree-item:hover {
+    @apply bg-[#e8e8f0];
+  }
+
+  .wb-tree-item.active {
+    @apply bg-[#316AC5] text-white;
+  }
+
+  .wb-tree-arrow {
+    @apply w-3 h-3 mr-0.5 text-gray-500 flex-shrink-0 text-[9px] leading-3 text-center;
+  }
+
+  .wb-tree-icon {
+    @apply w-4 h-4 mr-1.5 flex-shrink-0;
+  }
+
+  /* ----------------------------------------------------------------
+     Section / Group box
+     ---------------------------------------------------------------- */
+  .wb-group {
+    @apply border border-[#a0a0a0] bg-white;
+    border-radius: 2px;
+  }
+
+  .wb-group-title {
+    @apply px-3 py-1.5 text-[11px] font-semibold text-gray-800 border-b border-[#a0a0a0];
+    background: linear-gradient(to bottom, #ffffff, #f0f0f0);
+  }
+
+  .wb-group-body {
+    @apply p-3;
+  }
+
+  /* ----------------------------------------------------------------
+     FUP Badges
+     ---------------------------------------------------------------- */
+  .fup-badge {
+    @apply inline-flex items-center px-1 py-0 text-[9px] font-bold text-white;
+    border-radius: 2px;
+    line-height: 14px;
+  }
+
+  .fup-badge-1 {
+    @apply fup-badge bg-[#2196F3];
+  }
+
+  .fup-badge-2 {
+    @apply fup-badge bg-[#FF9800];
+  }
+
+  .fup-badge-3 {
+    @apply fup-badge bg-[#f44336];
+  }
+
+  .fup-badge-4 {
+    @apply fup-badge bg-[#00897b];
+  }
+
+  .fup-badge-5 {
+    @apply fup-badge bg-[#3949ab];
+  }
+
+  .fup-badge-6 {
+    @apply fup-badge bg-[#455a64];
+  }
+}
+
+/* ================================================================
+   Custom scrollbar - Classic style
+   ================================================================ */
+::-webkit-scrollbar {
+  width: 16px;
+  height: 16px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f0f0f0;
+  border: 1px solid #a0a0a0;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(to right, #e8e8e8, #c8c8c8);
+  border: 1px solid #a0a0a0;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(to right, #d8d8d8, #b8b8b8);
+}
+
+::-webkit-scrollbar-button {
+  background: linear-gradient(to bottom, #f0f0f0, #d0d0d0);
+  border: 1px solid #a0a0a0;
+  height: 16px;
+  width: 16px;
+}
+
+/* ================================================================
+   Responsive - Mobile friendly adjustments
+   While maintaining WinBox aesthetic
+   ================================================================ */
+@media (max-width: 640px) {
+  .btn {
+    min-height: 36px;
+    padding-left: 8px;
+    padding-right: 8px;
+    font-size: 12px;
+  }
+
+  .btn-sm {
+    min-height: 32px;
+  }
+
+  .modal {
+    min-width: auto;
+    width: 100%;
+    max-width: 100%;
+    max-height: 100vh;
+    border-radius: 0;
+    margin: 0;
+  }
+
+  .modal-overlay {
+    align-items: flex-end;
+  }
+
+  .table th {
+    padding: 4px 6px;
+    font-size: 10px;
+  }
+
+  .table td {
+    padding: 4px 6px;
+    font-size: 10px;
+  }
+
+  .table-compact th {
+    padding: 3px 4px;
+    font-size: 9px;
+  }
+
+  .table-compact td {
+    padding: 3px 4px;
+    font-size: 9px;
+  }
+
+  .input {
+    font-size: 16px; /* Prevent zoom on iOS */
+    min-height: 36px;
+  }
+
+  .filter-row {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .hide-mobile {
+    display: none;
+  }
+
+  body {
+    font-size: 13px;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-button {
+    display: none;
+  }
+}
+
+/* Tablet adjustments */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .table th {
+    padding: 4px 8px;
+  }
+
+  .table td {
+    padding: 4px 8px;
+  }
+}
+
+/* Smooth scrolling for touch */
+.overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Pull to refresh prevention */
+body {
+  overscroll-behavior-y: contain;
+}
+
+/* ================================================================
+   Dark mode - Deep dark theme matching old design
+   Uses Tailwind gray-800/900 palette
+   ================================================================ */
+.dark body,
+.dark {
+  --wb-bg: #111827;
+  --wb-surface: #1f2937;
+  --wb-text: #f3f4f6;
+  --wb-border: #374151;
+}
+
+.dark body {
+  @apply bg-[#111827] text-[#f3f4f6];
+}
+
+.dark .card {
+  @apply bg-[#1f2937] border-[#374151];
+}
+
+.dark .stat-card {
+  @apply bg-[#1f2937] border-[#374151];
+}
+
+.dark .table th {
+  @apply text-[#f3f4f6] border-b-[#374151] border-r-[#374151];
+  background: linear-gradient(to bottom, #283548, #1f2937);
+}
+
+.dark .table td {
+  @apply text-[#e5e7eb] border-b-[#374151] border-r-[#374151];
+}
+
+.dark .table tbody tr:nth-child(odd) {
+  @apply bg-[#1f2937];
+}
+
+.dark .table tbody tr:nth-child(even) {
+  @apply bg-[#1a2332];
+}
+
+.dark .table tbody tr:hover {
+  @apply bg-[#374151];
+}
+
+.dark .input {
+  @apply bg-[#374151] text-[#f3f4f6] border-[#4b5563];
+}
+
+.dark .input:focus {
+  @apply border-[#5a8abf];
+}
+
+.dark .modal {
+  @apply bg-[#1f2937] border-[#374151];
+}
+
+.dark .modal-body {
+  @apply bg-[#1f2937];
+}
+
+.dark .modal-footer {
+  @apply bg-[#111827] border-[#374151];
+}
+
+.dark .wb-toolbar {
+  @apply border-[#374151];
+  background: linear-gradient(to bottom, #283548, #1f2937);
+}
+
+.dark .wb-statusbar {
+  @apply bg-[#111827] border-[#374151] text-[#9ca3af];
+}
+
+.dark .wb-group {
+  @apply bg-[#1f2937] border-[#374151];
+}
+
+.dark .wb-group-title {
+  @apply text-[#f3f4f6] border-[#374151];
+  background: linear-gradient(to bottom, #283548, #1f2937);
+}
+
+.dark .card-header {
+  @apply border-[#374151];
+  background: linear-gradient(to bottom, #283548, #1f2937);
+}
+
+.dark .label {
+  @apply text-[#d1d5db];
+}
+
+.dark .wb-tab {
+  @apply bg-[#374151] text-[#9ca3af] border-[#4b5563];
+}
+
+.dark .wb-tab.active {
+  @apply bg-[#1f2937] text-[#f3f4f6];
+}
+
+.dark .wb-tree-item:hover {
+  @apply bg-[#374151];
+}
+
+.dark .btn {
+  @apply border-[#4b5563] text-[#f3f4f6];
+  background: linear-gradient(to bottom, #374151, #1f2937);
+}
+
+.dark .btn:hover {
+  background: linear-gradient(to bottom, #4b5563, #374151);
+}
+
+.dark .btn-primary {
+  @apply text-white border-[#2d5a87];
+  background: linear-gradient(to bottom, #5a8abf, #3a6a9f);
+}
+
+.dark .btn-danger {
+  @apply text-white;
+  background: linear-gradient(to bottom, #e74c3c, #c0392b);
+}
+
+.dark .table-container {
+  @apply border-[#374151];
+}
+
+.dark .wb-group-body {
+  @apply bg-[#1f2937];
+}
+
+.dark .btn-ghost {
+  @apply bg-transparent border-transparent text-[#9ca3af];
+}
+
+.dark .btn-ghost:hover {
+  @apply bg-[#374151] border-[#4b5563];
+}
+
+.dark .btn-success {
+  @apply text-white;
+  background: linear-gradient(to bottom, #5cb85c, #449d44);
+}
+
+.dark .input:disabled {
+  @apply bg-[#111827] text-[#6b7280];
+}
+
+.dark .wb-tree-item.active {
+  @apply bg-[#316AC5] text-white;
+}
+
+.dark .wb-usage-bar {
+  @apply bg-[#374151];
+}
+
+.dark .fup-badge {
+  @apply opacity-90;
+}
+
+/* Dark scrollbar */
+.dark ::-webkit-scrollbar-track {
+  background: #111827;
+  border-color: #374151;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: linear-gradient(to right, #4b5563, #374151);
+  border-color: #4b5563;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(to right, #6b7280, #4b5563);
+}
+
+.dark ::-webkit-scrollbar-button {
+  background: linear-gradient(to bottom, #374151, #1f2937);
+  border-color: #4b5563;
+}
+
+/* Dark mode: select (dropdown) elements */
+.dark select {
+  @apply bg-[#374151] text-[#f3f4f6] border-[#4b5563];
+}
+
+.dark select:focus {
+  @apply border-[#5a8abf];
+  box-shadow: 0 0 0 1px #5a8abf;
+}
+
+.dark select:disabled {
+  @apply bg-[#111827] text-[#6b7280];
+}
+
+/* Dark mode: textarea */
+.dark textarea {
+  @apply bg-[#374151] text-[#f3f4f6] border-[#4b5563];
+}
+
+.dark textarea:focus {
+  @apply border-[#5a8abf];
+}
+
+/* Dark mode: checkbox + radio labels */
+.dark input[type="checkbox"],
+.dark input[type="radio"] {
+  @apply bg-[#374151] border-[#4b5563];
+}
+
+/* Dark mode: generic Tailwind bg overrides for pages */
+.dark .bg-white {
+  background-color: #1f2937 !important;
+}
+
+.dark .bg-gray-50 {
+  background-color: #1a2332 !important;
+}
+
+.dark .bg-gray-100 {
+  background-color: #1a2332 !important;
+}
+
+.dark .bg-\[\#f0f0f0\] {
+  background-color: #1a2332 !important;
+}
+
+.dark .bg-\[\#f7f7f7\] {
+  background-color: #1e293b !important;
+}
+
+/* Dark mode: generic Tailwind text color overrides */
+.dark .text-gray-900 {
+  color: #f3f4f6 !important;
+}
+
+.dark .text-gray-800 {
+  color: #e5e7eb !important;
+}
+
+.dark .text-gray-700 {
+  color: #d1d5db !important;
+}
+
+.dark .text-gray-600 {
+  color: #9ca3af !important;
+}
+
+.dark .text-gray-500 {
+  color: #9ca3af !important;
+}
+
+.dark .text-gray-400 {
+  color: #9ca3af !important;
+}
+
+/* Dark mode: generic Tailwind border overrides */
+.dark .border-gray-200 {
+  border-color: #374151 !important;
+}
+
+.dark .border-gray-300 {
+  border-color: #374151 !important;
+}
+
+.dark .border-\[\#a0a0a0\] {
+  border-color: #374151 !important;
+}
+
+.dark .border-\[\#ccc\] {
+  border-color: #374151 !important;
+}
+
+.dark .border-\[\#eee\] {
+  border-color: #374151 !important;
+}
+
+/* Dark mode: hover backgrounds */
+.dark .hover\:bg-gray-50:hover {
+  background-color: #374151 !important;
+}
+
+.dark .hover\:bg-gray-100:hover {
+  background-color: #374151 !important;
+}
+
+.dark .hover\:bg-gray-200:hover {
+  background-color: #4b5563 !important;
+}
+
+/* Dark mode: divide colors */
+.dark .divide-gray-200 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #374151 !important;
+}
+
+/* Dark mode: ring colors */
+.dark .ring-gray-200 {
+  --tw-ring-color: #374151 !important;
+}
+
+.dark .ring-gray-300 {
+  --tw-ring-color: #374151 !important;
+}
+
+/* Dark mode: placeholder text */
+.dark ::placeholder {
+  color: #6b7280 !important;
+}
+
+/* Dark mode: HR elements */
+.dark hr {
+  border-color: #374151;
+}
+
+/* Dark mode: pre/code blocks */
+.dark pre, .dark code {
+  @apply bg-[#111827] text-[#f3f4f6] border-[#374151];
+}
+
+/* Dark mode: links */
+.dark a.text-\[\#316AC5\] {
+  color: #05d1f5 !important;
+}
+
+/* Dark mode: colored alert/info boxes */
+.dark .bg-blue-50 {
+  background-color: #172554 !important;
+}
+
+.dark .bg-green-50 {
+  background-color: #14532d !important;
+}
+
+.dark .bg-red-50 {
+  background-color: #450a0a !important;
+}
+
+.dark .bg-yellow-50 {
+  background-color: #422006 !important;
+}
+
+.dark .bg-orange-50 {
+  background-color: #431407 !important;
+}
+
+/* Dark mode: colored text in alert boxes */
+.dark .text-blue-700 {
+  color: #93c5fd !important;
+}
+
+.dark .text-blue-800 {
+  color: #93c5fd !important;
+}
+
+.dark .text-green-700 {
+  color: #86efac !important;
+}
+
+.dark .text-green-800 {
+  color: #86efac !important;
+}
+
+.dark .text-red-700 {
+  color: #fca5a5 !important;
+}
+
+.dark .text-red-800 {
+  color: #fca5a5 !important;
+}
+
+.dark .text-yellow-700 {
+  color: #fde68a !important;
+}
+
+.dark .text-yellow-800 {
+  color: #fde68a !important;
+}
+
+/* Dark mode: colored borders on alert boxes */
+.dark .border-blue-200 {
+  border-color: #1e3a5f !important;
+}
+
+.dark .border-green-200 {
+  border-color: #14532d !important;
+}
+
+.dark .border-red-200 {
+  border-color: #7f1d1d !important;
+}
+
+.dark .border-yellow-200 {
+  border-color: #713f12 !important;
+}
+
+/* Dark mode: toggle/switch styles */
+.dark .bg-gray-200 {
+  background-color: #374151 !important;
+}
+
+.dark .bg-gray-300 {
+  background-color: #4b5563 !important;
+}
+
+/* Dark mode: tab-like elements */
+.dark .bg-\[\#e0e0e0\] {
+  background-color: #374151 !important;
+}
+
+.dark .bg-\[\#e8e8e8\] {
+  background-color: #1f2937 !important;
+}
+
+/* ================================================================
+   Dark mode: Colored background overrides (badges, alerts, pills)
+   Old design: dark:bg-*-900/50 for light colored backgrounds
+   ================================================================ */
+.dark .bg-green-100 {
+  background-color: rgba(20, 83, 45, 0.5) !important;
+}
+.dark .bg-red-100 {
+  background-color: rgba(69, 10, 10, 0.5) !important;
+}
+.dark .bg-yellow-100 {
+  background-color: rgba(66, 32, 6, 0.5) !important;
+}
+.dark .bg-blue-100 {
+  background-color: rgba(23, 37, 84, 0.5) !important;
+}
+.dark .bg-purple-50 {
+  background-color: rgba(59, 7, 100, 0.3) !important;
+}
+.dark .bg-purple-100 {
+  background-color: rgba(59, 7, 100, 0.5) !important;
+}
+.dark .bg-teal-50 {
+  background-color: rgba(19, 78, 74, 0.3) !important;
+}
+.dark .bg-orange-100 {
+  background-color: rgba(67, 20, 7, 0.5) !important;
+}
+.dark .bg-indigo-50 {
+  background-color: rgba(30, 27, 75, 0.4) !important;
+}
+.dark .bg-indigo-100 {
+  background-color: rgba(30, 27, 75, 0.5) !important;
+}
+.dark .bg-cyan-50 {
+  background-color: rgba(22, 78, 99, 0.3) !important;
+}
+
+/* ================================================================
+   Dark mode: Colored text overrides (-600/-500 -> -400 for readability)
+   ================================================================ */
+.dark .text-green-600 {
+  color: #4ade80 !important;
+}
+.dark .text-green-500 {
+  color: #4ade80 !important;
+}
+.dark .text-red-600 {
+  color: #f87171 !important;
+}
+.dark .text-red-500 {
+  color: #f87171 !important;
+}
+.dark .text-blue-600 {
+  color: #60a5fa !important;
+}
+.dark .text-blue-500 {
+  color: #60a5fa !important;
+}
+.dark .text-yellow-600 {
+  color: #facc15 !important;
+}
+.dark .text-yellow-500 {
+  color: #facc15 !important;
+}
+.dark .text-orange-600 {
+  color: #fb923c !important;
+}
+.dark .text-orange-500 {
+  color: #fb923c !important;
+}
+.dark .text-orange-700 {
+  color: #fdba74 !important;
+}
+.dark .text-orange-800 {
+  color: #fdba74 !important;
+}
+.dark .text-purple-600 {
+  color: #c084fc !important;
+}
+.dark .text-purple-500 {
+  color: #c084fc !important;
+}
+.dark .text-purple-800 {
+  color: #d8b4fe !important;
+}
+.dark .text-teal-600 {
+  color: #2dd4bf !important;
+}
+.dark .text-teal-500 {
+  color: #2dd4bf !important;
+}
+.dark .text-indigo-600 {
+  color: #a5b4fc !important;
+}
+.dark .text-indigo-500 {
+  color: #a5b4fc !important;
+}
+.dark .text-cyan-600 {
+  color: #22d3ee !important;
+}
+.dark .text-cyan-500 {
+  color: #22d3ee !important;
+}
+.dark .text-primary-600 {
+  color: #67e8f9 !important;
+}
+
+/* ================================================================
+   Dark mode: Colored border overrides
+   ================================================================ */
+.dark .border-green-300 {
+  border-color: #166534 !important;
+}
+.dark .border-green-100 {
+  border-color: #14532d !important;
+}
+.dark .border-orange-200 {
+  border-color: #7c2d12 !important;
+}
+.dark .border-purple-300 {
+  border-color: #581c87 !important;
+}
+.dark .border-blue-300 {
+  border-color: #1e3a5f !important;
+}
+.dark .border-red-300 {
+  border-color: #7f1d1d !important;
+}
+.dark .border-gray-100 {
+  border-color: #374151 !important;
+}
+.dark .border-gray-500 {
+  border-color: #4b5563 !important;
+}
+.dark .border-\[\#c0c0c0\] {
+  border-color: #374151 !important;
+}
+.dark .border-\[\#d0d0d0\] {
+  border-color: #374151 !important;
+}
+.dark .border-\[\#ddd\] {
+  border-color: #374151 !important;
+}
+
+/* ================================================================
+   Dark mode: Custom hex backgrounds (light colors -> dark tints)
+   ================================================================ */
+.dark .bg-\[\#ffe0e0\] {
+  background-color: #4a2020 !important;
+}
+.dark .bg-\[\#fde8e8\] {
+  background-color: #4a2020 !important;
+}
+.dark .bg-\[\#e3f2fd\] {
+  background-color: #1a2a4a !important;
+}
+.dark .bg-\[\#e8f0ff\] {
+  background-color: #1a2a4a !important;
+}
+.dark .bg-\[\#fff8e1\] {
+  background-color: #3a3020 !important;
+}
+.dark .bg-\[\#e8f5e9\] {
+  background-color: #1a3a1a !important;
+}
+.dark .bg-\[\#e8ffe8\] {
+  background-color: #1a3a1a !important;
+}
+.dark .bg-\[\#e0ffe0\] {
+  background-color: #1a3a1a !important;
+}
+.dark .bg-\[\#fff0f0\] {
+  background-color: #3a2020 !important;
+}
+.dark .bg-\[\#fff8f0\] {
+  background-color: #3a3020 !important;
+}
+.dark .bg-\[\#f5f5f5\] {
+  background-color: #1f2937 !important;
+}
+.dark .bg-\[\#e8e8f0\] {
+  background-color: #374151 !important;
+}
+.dark .hover\:bg-\[\#e8e8f0\]:hover {
+  background-color: #374151 !important;
+}
+
+/* ================================================================
+   Dark mode: Custom hex text colors (too dark on dark bg)
+   ================================================================ */
+.dark .text-\[\#666\] {
+  color: #9ca3af !important;
+}
+.dark .text-\[\#888\] {
+  color: #9ca3af !important;
+}
+.dark .text-\[\#999\] {
+  color: #9ca3af !important;
+}
+.dark .text-\[\#316AC5\] {
+  color: #05d1f5 !important;
+}
+.dark .text-\[\#1a4a7a\] {
+  color: #6ba3d6 !important;
+}
+.dark .text-\[\#1565c0\] {
+  color: #64b5f6 !important;
+}
+.dark .text-\[\#1976d2\] {
+  color: #64b5f6 !important;
+}
+.dark .text-\[\#2e7d32\] {
+  color: #81c784 !important;
+}
+
+/* ================================================================
+   Dark mode: Focus ring + hover overrides
+   ================================================================ */
+.dark .focus\:ring-blue-500:focus {
+  --tw-ring-color: #60a5fa !important;
+}
+.dark .focus\:ring-primary-500:focus {
+  --tw-ring-color: #22d3ee !important;
+}
+
+.dark .hover\:bg-green-50:hover {
+  background-color: rgba(20, 83, 45, 0.3) !important;
+}
+.dark .hover\:bg-red-50:hover {
+  background-color: rgba(69, 10, 10, 0.3) !important;
+}
+.dark .hover\:bg-green-100:hover {
+  background-color: rgba(20, 83, 45, 0.4) !important;
+}
+.dark .hover\:bg-blue-50:hover {
+  background-color: rgba(23, 37, 84, 0.3) !important;
+}
+.dark .hover\:bg-blue-100:hover {
+  background-color: rgba(23, 37, 84, 0.4) !important;
+}
+
+.dark .divide-gray-100 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #374151 !important;
+}
+
+/* Selection highlight */
+::selection {
+  background: #316AC5;
+  color: white;
+}
