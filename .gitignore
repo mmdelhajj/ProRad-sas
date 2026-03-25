@@ -1,0 +1,26 @@
+# Data directories
+data/
+uploads/
+
+# Compiled binaries
+backend/cmd/api/proisp-api
+backend/cmd/radius/proisp-radius
+
+# Tarballs
+*.tar.gz
+
+# Frontend dist (built artifacts)
+frontend/dist/
+
+# Environment files
+.env
+*.env
+
+# SSL certificates
+*.pem
+*.crt
+*.key
+
+# OS files
+.DS_Store
+Thumbs.db

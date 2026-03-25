@@ -1,0 +1,45 @@
+# Build stage
+FROM golang:1.22-alpine AS builder
+
+WORKDIR /app
+
+# Build arguments
+ARG BUILD_MODE=production
+
+# Install dependencies and garble for obfuscation
+RUN apk add --no-cache git
+RUN go install mvdan.cc/garble@v0.12.1
+
+# Copy go mod files
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Build the RADIUS server with OBFUSCATION
+RUN if [ "$BUILD_MODE" = "dev" ]; then \
+      echo "Building DEV RADIUS version..." && \
+      CGO_ENABLED=0 GOOS=linux go build -o /radius ./cmd/radius; \
+    else \
+      echo "Building PRODUCTION RADIUS version (obfuscated)..." && \
+      CGO_ENABLED=0 GOOS=linux garble -tiny -seed=random build -ldflags "-s -w" -o /radius ./cmd/radius; \
+    fi
+
+# Final stage
+FROM alpine:3.19
+
+WORKDIR /app
+
+# Install ca-certificates
+RUN apk --no-cache add ca-certificates tzdata
+
+# Copy binary from builder
+COPY --from=builder /radius .
+
+# Expose RADIUS ports
+EXPOSE 1812/udp
+EXPOSE 1813/udp
+
+# Run the server
+CMD ["./radius"]
