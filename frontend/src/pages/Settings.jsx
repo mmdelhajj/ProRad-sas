@@ -17,7 +17,7 @@ import clsx from 'clsx'
 
 export default function Settings() {
   const queryClient = useQueryClient()
-  const { user, refreshUser, isReseller, hasPermission } = useAuthStore()
+  const { user, refreshUser, isReseller, hasPermission, isSaasMode } = useAuthStore()
   const { companyName, companyLogo, loginBackground, favicon, footerText, primaryColor, fetchBranding, updateBranding } = useBrandingStore()
   const [searchParams, setSearchParams] = useSearchParams()
 
@@ -689,6 +689,8 @@ export default function Settings() {
     setWaSending(false)
   }
 
+  const saasHiddenTabs = ['license', 'cluster', 'system', 'ssl', 'radius', 'security']
+
   const tabs = [
     { id: 'branding', label: 'Branding' },
     { id: 'general', label: 'General' },
@@ -703,7 +705,7 @@ export default function Settings() {
     { id: 'system', label: 'Network' },
     { id: 'ssl', label: 'SSL Certificate' },
     { id: 'api_keys', label: 'API Keys' },
-  ]
+  ].filter(tab => !isSaasMode || !saasHiddenTabs.includes(tab.id))
 
   // Logo upload handler
   const handleLogoUpload = async (e) => {

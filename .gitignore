@@ -1,27 +1,23 @@
-# Data directories
-data/
-uploads/
+# Binaries
+backend/proisp-api/
+backend/proisp-radius/
+backend/api
+backend/radius
+backend/main
+backend/bin/
+backend/build/
+backend/*.backup/
+backend/*~HEAD
+backend/*.new
+backend/*.fixed
+backend/*.backup
+backend/proisp-api-*
+backend/proisp-radius-*
 
-# Compiled binaries
-backend/cmd/api/proisp-api
-backend/cmd/radius/proisp-radius
-
-# Tarballs
-*.tar.gz
-
-# Frontend dist (built artifacts)
+# Frontend
+frontend/node_modules/
 frontend/dist/
 
-# Environment files
+# Environment
 .env
-*.env
-
-# SSL certificates
-*.pem
-*.crt
-*.key
-
-# OS files
-.DS_Store
-Thumbs.db
-node_modules/
+*.log

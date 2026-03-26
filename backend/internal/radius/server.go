@@ -212,9 +212,10 @@ type Server struct {
 	secrets   map[string][]byte // NAS IP -> Secret
 
 	// SaaS mode fields
-	saasMode      bool
-	saasNASMap    sync.Map // NAS IP (string) -> saasNASInfo
-	saasMapLoaded time.Time
+	saasMode           bool
+	saasNASMap         sync.Map // NAS IP (string) -> saasNASInfo
+	saasMapLoaded      time.Time
+	saasSharedSecret   []byte // Shared RADIUS secret for all SaaS tenants (unknown IPs)
 }
 
 // NewServer creates a new RADIUS server
@@ -228,6 +229,14 @@ func NewServer(authPort, acctPort int) *Server {
 	if os.Getenv("SAAS_MODE") == "true" {
 		s.saasMode = true
 		log.Println("RADIUS: SaaS mode enabled - will route by NAS IP to tenant schemas")
+
+		// Load shared RADIUS secret for unknown NAS IPs
+		sharedSecret := os.Getenv("SAAS_RADIUS_SECRET")
+		if sharedSecret == "" {
+			sharedSecret = "ProxPanel-SaaS-2026"
+		}
+		s.saasSharedSecret = []byte(sharedSecret)
+		log.Println("RADIUS SaaS: Shared secret loaded for unknown NAS IPs")
 	}
 	return s
 }
@@ -240,7 +249,7 @@ func (s *Server) LoadSecrets() error {
 		// SaaS mode: load secrets from admin.tenants table
 		// Each tenant's WireGuard client IP is the NAS IP, and radius_secret is the shared secret
 		var tenants []models.Tenant
-		if err := database.DB.Where("status = ?", "active").Find(&tenants).Error; err != nil {
+		if err := database.DB.Where("status IN ?", []string{"active", "trial"}).Find(&tenants).Error; err != nil {
 			return fmt.Errorf("failed to load tenants for RADIUS: %w", err)
 		}
 		for _, t := range tenants {
@@ -310,6 +319,76 @@ func (s *Server) getDBForNAS(nasIP string) *gorm.DB {
 	return database.DB
 }
 
+// getDBForNASWithUsername resolves tenant DB for unknown NAS IPs by searching subscriber across tenants.
+// Returns the tenant-scoped DB and true if a tenant was found via subscriber search.
+func (s *Server) getDBForNASWithUsername(nasIP string, username string) (*gorm.DB, bool) {
+	if !s.saasMode {
+		return database.DB, false
+	}
+
+	// Refresh tenant map every 60 seconds
+	if time.Since(s.saasMapLoaded) > 60*time.Second {
+		go s.LoadSecrets()
+	}
+
+	// Fast path: known NAS
+	if info, ok := s.saasNASMap.Load(nasIP); ok {
+		tenantInfo := info.(saasNASInfo)
+		return database.GetTenantDB(tenantInfo.SchemaName), false
+	}
+
+	// Slow path: unknown NAS — search subscriber across all tenant schemas
+	if len(s.saasSharedSecret) > 0 && username != "" {
+		tenantDB, tenantInfo := s.findTenantBySubscriber(username)
+		if tenantDB != nil {
+			// Auto-register this NAS IP → tenant mapping
+			s.autoRegisterNAS(nasIP, tenantInfo)
+			return tenantDB, true
+		}
+	}
+
+	log.Printf("RADIUS SaaS: No tenant mapping for NAS %s, using global DB", nasIP)
+	return database.DB, false
+}
+
+// findTenantBySubscriber searches for a subscriber username across all active/trial tenant schemas.
+func (s *Server) findTenantBySubscriber(username string) (*gorm.DB, saasNASInfo) {
+	var tenants []models.Tenant
+	database.DB.Where("status IN ?", []string{"active", "trial"}).Find(&tenants)
+
+	for _, t := range tenants {
+		tDB := database.GetTenantDB(t.SchemaName)
+		var count int64
+		tDB.Model(&models.Subscriber{}).Where("username = ? AND is_active = true", username).Count(&count)
+		if count > 0 {
+			log.Printf("RADIUS SaaS: Found subscriber %s in tenant %s", username, t.SchemaName)
+			return tDB, saasNASInfo{TenantID: t.ID, SchemaName: t.SchemaName}
+		}
+	}
+	return nil, saasNASInfo{}
+}
+
+// autoRegisterNAS persists the NAS IP → tenant mapping for fast subsequent lookups.
+func (s *Server) autoRegisterNAS(nasIP string, info saasNASInfo) {
+	// 1. Store in memory map (immediate effect)
+	s.saasNASMap.Store(nasIP, info)
+	s.secretsMu.Lock()
+	s.secrets[nasIP] = s.saasSharedSecret
+	s.secretsMu.Unlock()
+
+	// 2. Persist to nas_tenant_map in DB
+	database.DB.Exec(
+		"INSERT INTO admin.nas_tenant_map (nas_ip, tenant_id) VALUES (?, ?) ON CONFLICT (nas_ip) DO UPDATE SET tenant_id = ?",
+		nasIP, info.TenantID, info.TenantID,
+	)
+
+	// 3. Update NAS ip_address in tenant schema (replace 0.0.0.0 placeholder)
+	tDB := database.GetTenantDB(info.SchemaName)
+	tDB.Model(&models.Nas{}).Where("ip_address = ?", "0.0.0.0").Update("ip_address", nasIP)
+
+	log.Printf("RADIUS SaaS: Auto-registered NAS %s → tenant %s", nasIP, info.SchemaName)
+}
+
 // GetSecret returns the secret for a NAS IP
 func (s *Server) GetSecret(remoteAddr net.Addr) ([]byte, error) {
 	host, _, err := net.SplitHostPort(remoteAddr.String())
@@ -317,14 +396,21 @@ func (s *Server) GetSecret(remoteAddr net.Addr) ([]byte, error) {
 		return nil, err
 	}
 
+	// Fast path: known NAS
 	s.secretsMu.RLock()
 	secret, ok := s.secrets[host]
 	s.secretsMu.RUnlock()
-	if !ok {
-		return nil, fmt.Errorf("unknown NAS: %s", host)
+	if ok {
+		return secret, nil
 	}
 
-	return secret, nil
+	// SaaS mode: return shared secret for unknown IPs
+	if s.saasMode && len(s.saasSharedSecret) > 0 {
+		log.Printf("RADIUS SaaS: Using shared secret for unknown NAS %s", host)
+		return s.saasSharedSecret, nil
+	}
+
+	return nil, fmt.Errorf("unknown NAS: %s", host)
 }
 
 // SecretSource implements the radius.SecretSource interface
@@ -390,8 +476,8 @@ func (s *Server) handleAuth(w radius.ResponseWriter, r *radius.Request) {
 	// Start timing
 	startTime := time.Now()
 
-	// SaaS mode: resolve tenant DB from NAS IP
-	db := s.getDBForNAS(nasIP.String())
+	// SaaS mode: resolve tenant DB from NAS IP (with subscriber search for unknown IPs)
+	db, _ := s.getDBForNASWithUsername(nasIP.String(), username)
 
 	// Handle realm stripping based on NAS configuration
 	username = s.stripRealmIfAllowed(username, nasIP.String())
@@ -708,8 +794,8 @@ func (s *Server) handleAcct(w radius.ResponseWriter, r *radius.Request) {
 
 	log.Printf("Acct request: user=%s, type=%d, session=%s", username, acctStatusType, sessionID)
 
-	// SaaS mode: resolve tenant DB from NAS IP
-	db := s.getDBForNAS(nasIP.String())
+	// SaaS mode: resolve tenant DB from NAS IP (with subscriber search for unknown IPs)
+	db, _ := s.getDBForNASWithUsername(nasIP.String(), username)
 
 	now := time.Now()
 

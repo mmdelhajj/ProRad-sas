@@ -3,9 +3,6 @@ package handlers
 import (
 	"crypto/rand"
 	"fmt"
-	"encoding/json"
-	"net/http"
-	"log"
 	"strconv"
 	"strings"
 	"sync"
@@ -17,7 +14,6 @@ import (
 	"github.com/proisp/backend/internal/database"
 	"github.com/proisp/backend/internal/middleware"
 	"github.com/proisp/backend/internal/models"
-	"github.com/proisp/backend/internal/services"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -184,9 +180,9 @@ type UserInfo struct {
 }
 
 // getResellerPermissions returns the list of permission names for a reseller
-func getResellerPermissions(db *gorm.DB, resellerID uint) []string {
+func getResellerPermissions(resellerID uint) []string {
 	var reseller models.Reseller
-	if err := db.First(&reseller, resellerID).Error; err != nil {
+	if err := database.DB.First(&reseller, resellerID).Error; err != nil {
 		return nil
 	}
 
@@ -196,7 +192,7 @@ func getResellerPermissions(db *gorm.DB, resellerID uint) []string {
 
 	// Load permissions from junction table (Preload doesn't work with gorm:"-")
 	var permissions []string
-	db.Table("permissions").
+	database.DB.Table("permissions").
 		Joins("JOIN permission_group_permissions pgp ON pgp.permission_id = permissions.id").
 		Where("pgp.permission_group_id = ?", *reseller.PermissionGroup).
 		Pluck("name", &permissions)
@@ -205,7 +201,42 @@ func getResellerPermissions(db *gorm.DB, resellerID uint) []string {
 }
 
 // getUserPermissions returns the list of permission names for a user based on their permission_group
-func getUserPermissions(db *gorm.DB, permissionGroupID *uint) []string {
+func getUserPermissions(permissionGroupID *uint) []string {
+	if permissionGroupID == nil {
+		return nil
+	}
+
+	var permissions []string
+	database.DB.Table("permissions").
+		Joins("JOIN permission_group_permissions pgp ON pgp.permission_id = permissions.id").
+		Where("pgp.permission_group_id = ?", *permissionGroupID).
+		Pluck("name", &permissions)
+
+	return permissions
+}
+
+// getResellerPermissionsDB returns the list of permission names for a reseller using a specific DB
+func getResellerPermissionsDB(db *gorm.DB, resellerID uint) []string {
+	var reseller models.Reseller
+	if err := db.First(&reseller, resellerID).Error; err != nil {
+		return nil
+	}
+
+	if reseller.PermissionGroup == nil {
+		return nil
+	}
+
+	var permissions []string
+	db.Table("permissions").
+		Joins("JOIN permission_group_permissions pgp ON pgp.permission_id = permissions.id").
+		Where("pgp.permission_group_id = ?", *reseller.PermissionGroup).
+		Pluck("name", &permissions)
+
+	return permissions
+}
+
+// getUserPermissionsDB returns the list of permission names using a specific DB
+func getUserPermissionsDB(db *gorm.DB, permissionGroupID *uint) []string {
 	if permissionGroupID == nil {
 		return nil
 	}
@@ -222,7 +253,6 @@ func getUserPermissions(db *gorm.DB, permissionGroupID *uint) []string {
 // Login handles user login
 func (h *AuthHandler) Login(c *fiber.Ctx) error {
 	clientIP := c.IP()
-	db := middleware.GetTenantDBFromCtx(c)
 
 	// Check if IP is blocked due to too many failed attempts
 	if blocked, remaining := isIPBlocked(clientIP); blocked {
@@ -247,9 +277,20 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 		})
 	}
 
+	// Use tenant-scoped DB in SaaS mode
+	db := middleware.GetTenantDBFromCtx(c)
+
+	// In SaaS mode, use schema-qualified table name to avoid connection pool issues
+	tenantSchema, _ := c.Locals("tenant_schema").(string)
+	tenantID, _ := c.Locals("tenant_id").(uint)
+
 	// Find user
 	var user models.User
-	if err := db.Where("username = ?", req.Username).First(&user).Error; err != nil {
+	userQuery := db
+	if tenantSchema != "" {
+		userQuery = database.DB.Table(tenantSchema + ".users")
+	}
+	if err := userQuery.Where("username = ?", req.Username).First(&user).Error; err != nil {
 		remaining := recordFailedAttempt(clientIP)
 		msg := "Invalid username or password"
 		if remaining > 0 {
@@ -260,7 +301,6 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 			Message: msg,
 		})
 	}
-
 	// Check if user is active
 	if !user.IsActive {
 		return c.Status(fiber.StatusUnauthorized).JSON(LoginResponse{
@@ -272,7 +312,11 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 	// Check if reseller account is active
 	if user.UserType == models.UserTypeReseller && user.ResellerID != nil {
 		var reseller models.Reseller
-		if err := db.First(&reseller, *user.ResellerID).Error; err == nil {
+		resellerQuery := db
+		if tenantSchema != "" {
+			resellerQuery = database.DB.Table(tenantSchema + ".resellers")
+		}
+		if err := resellerQuery.First(&reseller, *user.ResellerID).Error; err == nil {
 			if !reseller.IsActive {
 				return c.Status(fiber.StatusUnauthorized).JSON(LoginResponse{
 					Success: false,
@@ -334,8 +378,14 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 	// Clear failed attempts on successful login
 	clearFailedAttempts(clientIP)
 
-	// Generate token
-	token, err := middleware.GenerateToken(&user, h.cfg)
+	// Generate token (with tenant context in SaaS mode)
+	var token string
+	var err error
+	if tenantID > 0 {
+		token, err = middleware.GenerateTokenWithTenant(&user, h.cfg, tenantID, tenantSchema)
+	} else {
+		token, err = middleware.GenerateToken(&user, h.cfg)
+	}
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(LoginResponse{
 			Success: false,
@@ -345,7 +395,11 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 
 	// Update last login
 	now := time.Now()
-	db.Model(&user).Update("last_login", now)
+	if tenantSchema != "" {
+		database.DB.Table(tenantSchema + ".users").Where("id = ?", user.ID).Update("last_login", now)
+	} else {
+		db.Model(&user).Update("last_login", now)
+	}
 
 	// Log the login
 	auditLog := models.AuditLog{
@@ -360,17 +414,26 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 		IPAddress:   c.IP(),
 		UserAgent:   c.Get("User-Agent"),
 	}
-	db.Create(&auditLog)
+	if tenantSchema != "" {
+		database.DB.Table(tenantSchema + ".audit_logs").Create(&auditLog)
+	} else {
+		db.Create(&auditLog)
+	}
 
 	// Get permissions for reseller users
 	var permissions []string
+	permDB := db
+	if tenantSchema != "" {
+		permDB = database.DB
+		permDB.Exec(fmt.Sprintf("SET search_path TO %s, public", tenantSchema))
+	}
 	if user.UserType == models.UserTypeReseller && user.ResellerID != nil {
-		permissions = getResellerPermissions(middleware.GetTenantDBFromCtx(c), *user.ResellerID)
+		permissions = getResellerPermissionsDB(permDB, *user.ResellerID)
 	}
 
 	// Get permissions for non-reseller users (support, collector, readonly) based on their permission_group
 	if user.UserType != models.UserTypeReseller && user.UserType != models.UserTypeAdmin {
-		permissions = getUserPermissions(middleware.GetTenantDBFromCtx(c), user.PermissionGroup)
+		permissions = getUserPermissionsDB(permDB, user.PermissionGroup)
 	}
 
 	return c.JSON(LoginResponse{
@@ -407,7 +470,7 @@ func (h *AuthHandler) Logout(c *fiber.Ctx) error {
 			IPAddress:   c.IP(),
 			UserAgent:   c.Get("User-Agent"),
 		}
-		middleware.GetTenantDBFromCtx(c).Create(&auditLog)
+		database.DB.Create(&auditLog)
 	}
 
 	// Add token to blacklist in Redis
@@ -442,21 +505,24 @@ func (h *AuthHandler) Me(c *fiber.Ctx) error {
 		})
 	}
 
+	// Use tenant-scoped DB in SaaS mode
+	meDB := middleware.GetTenantDBFromCtx(c)
+
 	// Get reseller info if applicable
 	var reseller *models.Reseller
 	var permissions []string
 	if user.ResellerID != nil {
 		reseller = &models.Reseller{}
-		middleware.GetTenantDBFromCtx(c).First(reseller, *user.ResellerID)
+		meDB.First(reseller, *user.ResellerID)
 		// Get permissions for reseller
 		if user.UserType == models.UserTypeReseller {
-			permissions = getResellerPermissions(middleware.GetTenantDBFromCtx(c), *user.ResellerID)
+			permissions = getResellerPermissionsDB(meDB, *user.ResellerID)
 		}
 	}
 
 	// Get permissions for non-reseller users (support, collector, readonly) based on their permission_group
 	if user.UserType != models.UserTypeReseller && user.UserType != models.UserTypeAdmin {
-		permissions = getUserPermissions(middleware.GetTenantDBFromCtx(c), user.PermissionGroup)
+		permissions = getUserPermissionsDB(meDB, user.PermissionGroup)
 	}
 
 	return c.JSON(fiber.Map{
@@ -528,7 +594,7 @@ func (h *AuthHandler) ChangePassword(c *fiber.Ctx) error {
 	}
 
 	// Update password and clear force_password_change flag
-	if err := middleware.GetTenantDBFromCtx(c).Model(user).Updates(map[string]interface{}{
+	if err := database.DB.Model(user).Updates(map[string]interface{}{
 		"password":              string(hashedPassword),
 		"force_password_change": false,
 	}).Error; err != nil {
@@ -791,217 +857,4 @@ func checkFailedLoginAlert(ip, username string) {
 
 	// Log the alert
 	database.DB.Exec("INSERT INTO communication_logs (type, recipient, message, status, created_at) VALUES ('whatsapp', ?, ?, 'sent', NOW())", alertKey, msg)
-}
-
-// ==================== Forgot Password ====================
-
-// resetToken stores password reset tokens in memory
-type resetToken struct {
-	Email     string
-	Schema    string
-	Token     string
-	ExpiresAt time.Time
-}
-
-var (
-	resetTokens   = make(map[string]*resetToken) // token -> resetToken
-	resetTokensMu sync.Mutex
-)
-
-// generateResetToken creates a cryptographic random token
-func generateResetToken() string {
-	b := make([]byte, 32)
-	rand.Read(b)
-	const chars = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-	result := make([]byte, 32)
-	for i := range result {
-		result[i] = chars[int(b[i])%len(chars)]
-	}
-	return string(result)
-}
-
-// ForgotPassword sends a password reset email
-func (h *AuthHandler) ForgotPassword(c *fiber.Ctx) error {
-	var req struct {
-		Email string `json:"email"`
-	}
-	if err := c.BodyParser(&req); err != nil || req.Email == "" {
-		return c.Status(400).JSON(fiber.Map{"success": false, "message": "Email is required"})
-	}
-
-	tenantSchema, _ := c.Locals("tenant_schema").(string)
-
-	// Find user by email using schema-qualified query to avoid connection pool race
-	var user models.User
-	var findErr error
-	if tenantSchema != "" {
-		findErr = database.DB.Raw(
-			fmt.Sprintf("SELECT * FROM %s.users WHERE email = $1 AND is_active = true AND deleted_at IS NULL LIMIT 1", tenantSchema),
-			req.Email,
-		).Scan(&user).Error
-		if user.ID == 0 {
-			findErr = gorm.ErrRecordNotFound
-		}
-	} else {
-		findErr = database.DB.Where("email = ? AND is_active = true", req.Email).First(&user).Error
-	}
-	if findErr != nil {
-		// Don't reveal if email exists
-		return c.JSON(fiber.Map{"success": true, "message": "If an account with that email exists, a reset link has been sent."})
-	}
-
-	// Generate token
-	token := generateResetToken()
-
-	resetTokensMu.Lock()
-	// Clean expired tokens
-	now := time.Now()
-	for k, v := range resetTokens {
-		if now.After(v.ExpiresAt) {
-			delete(resetTokens, k)
-		}
-	}
-	resetTokens[token] = &resetToken{
-		Email:     req.Email,
-		Schema:    tenantSchema,
-		Token:     token,
-		ExpiresAt: now.Add(30 * time.Minute),
-	}
-	resetTokensMu.Unlock()
-
-	// Build reset URL
-	host := c.Hostname()
-	resetURL := "https://" + host + "/reset-password?token=" + token
-
-	// Send email
-	// Use tenant DB for email (reading SMTP config); search_path race is OK here since fallback exists
-	emailDB := database.GetTenantDB(tenantSchema)
-	go sendPasswordResetEmail(emailDB, user.FullName, req.Email, resetURL)
-
-	return c.JSON(fiber.Map{"success": true, "message": "If an account with that email exists, a reset link has been sent."})
-}
-
-// ResetPassword resets the password using a token
-func (h *AuthHandler) ResetPassword(c *fiber.Ctx) error {
-	var req struct {
-		Token       string `json:"token"`
-		NewPassword string `json:"new_password"`
-	}
-	if err := c.BodyParser(&req); err != nil || req.Token == "" || req.NewPassword == "" {
-		return c.Status(400).JSON(fiber.Map{"success": false, "message": "Token and new password are required"})
-	}
-
-	if len(req.NewPassword) < 6 {
-		return c.Status(400).JSON(fiber.Map{"success": false, "message": "Password must be at least 6 characters"})
-	}
-
-	resetTokensMu.Lock()
-	rt, exists := resetTokens[req.Token]
-	if exists {
-		delete(resetTokens, req.Token)
-	}
-	resetTokensMu.Unlock()
-
-	if !exists || time.Now().After(rt.ExpiresAt) {
-		return c.Status(400).JSON(fiber.Map{"success": false, "message": "Invalid or expired reset token"})
-	}
-
-	// Hash new password
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
-	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"success": false, "message": "Failed to process password"})
-	}
-
-	// Update password using raw SQL with schema-qualified table name
-	// This avoids the SET search_path connection pool race condition
-	var result *gorm.DB
-	if rt.Schema != "" {
-		result = database.DB.Exec(
-			fmt.Sprintf("UPDATE %s.users SET password = $1, password_plain = $2, force_password_change = false, updated_at = NOW() WHERE email = $3 AND deleted_at IS NULL", rt.Schema),
-			string(hashedPassword), req.NewPassword, rt.Email,
-		)
-	} else {
-		result = database.DB.Exec(
-			"UPDATE users SET password = $1, password_plain = $2, force_password_change = false, updated_at = NOW() WHERE email = $3 AND deleted_at IS NULL",
-			string(hashedPassword), req.NewPassword, rt.Email,
-		)
-	}
-	if result.Error != nil {
-		log.Printf("ResetPassword: DB error: %v", result.Error)
-		return c.Status(500).JSON(fiber.Map{"success": false, "message": "Failed to update password"})
-	}
-	if result.RowsAffected == 0 {
-		return c.Status(400).JSON(fiber.Map{"success": false, "message": "User not found"})
-	}
-	log.Printf("ResetPassword: Password updated for %s in schema %s (rows: %d)", rt.Email, rt.Schema, result.RowsAffected)
-
-	return c.JSON(fiber.Map{"success": true, "message": "Password has been reset successfully. You can now log in."})
-}
-
-// sendPasswordResetEmail sends the reset email via SMTP
-func sendPasswordResetEmail(db *gorm.DB, name, email, resetURL string) {
-	emailSvc := services.NewEmailServiceWithDB(db)
-
-	if name == "" {
-		name = "User"
-	}
-
-	subject := "Password Reset Request"
-	body := "<html><body style=\"font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;background:#f5f5f5;\">" +
-		"<div style=\"background:#1a1a2e;color:white;padding:30px;text-align:center;border-radius:8px 8px 0 0;\">" +
-		"<h1 style=\"margin:0;font-size:24px;\">Password Reset</h1>" +
-		"</div>" +
-		"<div style=\"background:white;padding:30px;border-radius:0 0 8px 8px;border:1px solid #e0e0e0;\">" +
-		"<p>Hello <strong>" + name + "</strong>,</p>" +
-		"<p>We received a request to reset your password. Click the button below to set a new password:</p>" +
-		"<div style=\"text-align:center;margin:24px 0;\">" +
-		"<a href=\"" + resetURL + "\" style=\"display:inline-block;background:#2563eb;color:white;padding:14px 32px;border-radius:8px;font-weight:bold;text-decoration:none;font-size:16px;\">Reset Password</a>" +
-		"</div>" +
-		"<p style=\"color:#666;font-size:13px;\">This link will expire in 30 minutes.</p>" +
-		"<p style=\"color:#666;font-size:13px;\">If you did not request a password reset, you can safely ignore this email.</p>" +
-		"</div>" +
-		"</body></html>"
-
-	if err := emailSvc.SendEmail(email, subject, body, true); err != nil {
-		// Fallback: try direct SMTP to ProxRad mail server
-		sendDirectResetEmail(name, email, resetURL)
-	}
-}
-
-// sendDirectResetEmail sends reset email via license server relay
-func sendDirectResetEmail(name, email, resetURL string) {
-	subject := "Password Reset Request"
-	htmlBody := "<!DOCTYPE html><html><body style=\"font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;background:#f5f5f5;\">" +
-		"<div style=\"background:#1a1a2e;color:white;padding:30px;text-align:center;border-radius:8px 8px 0 0;\">" +
-		"<h1 style=\"margin:0;font-size:24px;\">Password Reset</h1>" +
-		"</div>" +
-		"<div style=\"background:white;padding:30px;border-radius:0 0 8px 8px;border:1px solid #e0e0e0;\">" +
-		"<p>Hello <strong>" + name + "</strong>,</p>" +
-		"<p>Click the button below to reset your password:</p>" +
-		"<div style=\"text-align:center;margin:24px 0;\">" +
-		"<a href=\"" + resetURL + "\" style=\"display:inline-block;background:#2563eb;color:white;padding:14px 32px;border-radius:8px;font-weight:bold;text-decoration:none;font-size:16px;\">Reset Password</a>" +
-		"</div>" +
-		"<p style=\"color:#666;font-size:13px;\">This link expires in 30 minutes. If you did not request this, ignore this email.</p>" +
-		"</div></body></html>"
-
-	// Use license server email relay API
-	payload := map[string]string{
-		"to":      email,
-		"subject": subject,
-		"body":    htmlBody,
-	}
-	payloadJSON, _ := json.Marshal(payload)
-
-	client := &http.Client{Timeout: 15 * time.Second}
-	req, _ := http.NewRequest("POST", "https://license.proxrad.com/api/v1/license/saas-email-relay", strings.NewReader(string(payloadJSON)))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-SaaS-Secret", "proxrad-saas-2026")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Printf("ERROR: Reset email relay failed: %v", err)
-		return
-	}
-	defer resp.Body.Close()
-	log.Printf("INFO: Password reset email relayed for %s (status: %d)", email, resp.StatusCode)
 }

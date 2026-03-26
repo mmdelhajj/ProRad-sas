@@ -313,6 +313,8 @@ export const dashboardApi = {
   systemInfo: () => api.get('/dashboard/system-info'),
   getBandwidthHeatmap: () => api.get('/dashboard/bandwidth-heatmap'),
   getSubnetMap: () => api.get('/dashboard/subnet-map'),
+  radiusStatus: () => api.get('/radius-status'),
+  mikrotikConfig: () => api.get('/mikrotik-config'),
 }
 
 export const sessionApi = {

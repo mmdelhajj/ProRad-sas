@@ -88,6 +88,7 @@ services:
       - JWT_EXPIRE_HOURS=168
       - API_PORT=8080
       - RADIUS_SECRET=${RADIUS_SECRET:-saas-radius-secret}
+      - SAAS_RADIUS_SECRET=${SAAS_RADIUS_SECRET:-ProxPanel-SaaS-2026}
       - SERVER_IP=${SERVER_IP:-139.162.153.201}
       - ADMIN_DB_SCHEMA=admin
       - SKIP_LICENSE=true
@@ -130,6 +131,7 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:-SaaS-Redis-2026!}
       - RADIUS_SECRET=${RADIUS_SECRET:-saas-radius-secret}
+      - SAAS_RADIUS_SECRET=${SAAS_RADIUS_SECRET:-ProxPanel-SaaS-2026}
       - SERVER_IP=${SERVER_IP:-139.162.153.201}
       - SKIP_LICENSE=true
     deploy:

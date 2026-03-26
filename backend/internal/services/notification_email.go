@@ -4,10 +4,10 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net/smtp"
+	"os"
 	"strings"
 
 	"github.com/proisp/backend/internal/database"
-	"gorm.io/gorm"
 	"github.com/proisp/backend/internal/models"
 )
 
@@ -17,53 +17,6 @@ type EmailService struct{}
 // NewEmailService creates a new email service
 func NewEmailService() *EmailService {
 	return &EmailService{}
-}
-
-// NewEmailServiceWithDB creates an email service that reads config from a specific DB
-func NewEmailServiceWithDB(db *gorm.DB) *EmailServiceWithDB {
-	return &EmailServiceWithDB{db: db}
-}
-
-// EmailServiceWithDB is an email service that reads config from a specific DB connection
-type EmailServiceWithDB struct {
-	db *gorm.DB
-}
-
-// SendEmail sends an email using config from the provided DB
-func (s *EmailServiceWithDB) SendEmail(to, subject, body string, isHTML bool) error {
-	settings := make(map[string]string)
-	keys := []string{"smtp_host", "smtp_port", "smtp_username", "smtp_password", "smtp_from_name", "smtp_from_email", "notification_email"}
-
-	for _, key := range keys {
-		var setting models.SystemPreference
-		if err := s.db.Where("key = ?", key).First(&setting).Error; err == nil {
-			settings[key] = setting.Value
-		}
-	}
-
-	if settings["smtp_host"] == "" {
-		return fmt.Errorf("SMTP host not configured")
-	}
-
-	fromAddr := settings["smtp_from_email"]
-	if fromAddr == "" {
-		fromAddr = settings["smtp_username"]
-	}
-	if fromAddr == "" {
-		fromAddr = settings["notification_email"]
-	}
-
-	config := &EmailConfig{
-		Host:     settings["smtp_host"],
-		Port:     settings["smtp_port"],
-		Username: settings["smtp_username"],
-		Password: settings["smtp_password"],
-		FromName: settings["smtp_from_name"],
-		FromAddr: fromAddr,
-	}
-
-	base := &EmailService{}
-	return base.SendEmailWithConfig(config, to, subject, body, isHTML)
 }
 
 // EmailConfig holds SMTP configuration
@@ -86,6 +39,16 @@ func (s *EmailService) GetConfig() (*EmailConfig, error) {
 		if err := database.DB.Where("key = ?", key).First(&setting).Error; err == nil {
 			settings[key] = setting.Value
 		}
+	}
+
+	// Fall back to environment variables if DB settings are empty
+	if settings["smtp_host"] == "" {
+		settings["smtp_host"] = os.Getenv("SMTP_HOST")
+		settings["smtp_port"] = os.Getenv("SMTP_PORT")
+		settings["smtp_username"] = os.Getenv("SMTP_USERNAME")
+		settings["smtp_password"] = os.Getenv("SMTP_PASSWORD")
+		settings["smtp_from_name"] = os.Getenv("SMTP_FROM_NAME")
+		settings["smtp_from_email"] = os.Getenv("SMTP_FROM_EMAIL")
 	}
 
 	if settings["smtp_host"] == "" {

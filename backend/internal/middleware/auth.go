@@ -41,6 +41,26 @@ func GenerateToken(user *models.User, cfg *config.Config) (string, error) {
 	return token.SignedString([]byte(cfg.JWTSecret))
 }
 
+// GenerateTokenWithTenant generates a JWT token with tenant context for SaaS mode
+func GenerateTokenWithTenant(user *models.User, cfg *config.Config, tenantID uint, tenantSchema string) (string, error) {
+	claims := JWTClaims{
+		UserID:       user.ID,
+		Username:     user.Username,
+		UserType:     user.UserType,
+		ResellerID:   user.ResellerID,
+		TenantID:     tenantID,
+		TenantSchema: tenantSchema,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(cfg.JWTExpireHours) * time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			Issuer:    "proisp",
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString([]byte(cfg.JWTSecret))
+}
+
 // OptionalAuth middleware - sets user context if valid token present, but allows unauthenticated access
 func OptionalAuth(cfg *config.Config) fiber.Handler {
 	return func(c *fiber.Ctx) error {

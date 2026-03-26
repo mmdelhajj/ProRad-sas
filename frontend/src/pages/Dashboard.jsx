@@ -3,7 +3,7 @@ import { dashboardApi } from '../services/api'
 import { formatDate } from '../utils/timezone'
 import { useBrandingStore } from '../store/brandingStore'
 import { useAuthStore } from '../store/authStore'
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useState } from 'react'
 const ReactECharts = lazy(() => import('echarts-for-react'))
 import {
   UsersIcon,
@@ -83,7 +83,29 @@ function StatBox({ label, value, trend, icon: Icon, iconColor }) {
 
 export default function Dashboard() {
   const { companyName } = useBrandingStore()
-  const { isAdmin } = useAuthStore()
+  const { isAdmin, isSaasMode } = useAuthStore()
+  const [showConfig, setShowConfig] = useState(false)
+  const [configData, setConfigData] = useState(null)
+  const [configLoading, setConfigLoading] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  const loadConfig = async () => {
+    setConfigLoading(true)
+    try {
+      const res = await dashboardApi.mikrotikConfig()
+      setConfigData(res.data)
+      setShowConfig(true)
+    } catch (e) {
+      console.error('Failed to load config', e)
+    }
+    setConfigLoading(false)
+  }
+
+  const copyScript = (text) => {
+    navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
 
   const { data: stats, isLoading } = useQuery({
     queryKey: ['dashboard-stats'],
@@ -110,19 +132,27 @@ export default function Dashboard() {
     queryKey: ['dashboard-system-metrics'],
     queryFn: () => dashboardApi.systemMetrics().then((r) => r.data.data),
     refetchInterval: 10000, // Refresh every 10 seconds for real-time monitoring
-    enabled: isAdmin(), // Only fetch for admins
+    enabled: isAdmin() && !isSaasMode,
   })
 
   const { data: systemCapacityResponse } = useQuery({
     queryKey: ['dashboard-system-capacity'],
     queryFn: () => dashboardApi.systemCapacity().then((r) => r.data),
     refetchInterval: 30000, // Refresh every 30 seconds
-    enabled: isAdmin(), // Only fetch for admins
+    enabled: isAdmin() && !isSaasMode,
   })
 
   // Don't show capacity on secondary/replica servers
   // API returns { success, is_replica, data } - extract data only for main server
   const systemCapacity = systemCapacityResponse?.is_replica ? null : systemCapacityResponse?.data
+
+  // RADIUS connection status (SaaS mode only)
+  const { data: radiusStatus } = useQuery({
+    queryKey: ['radius-status'],
+    queryFn: () => dashboardApi.radiusStatus().then(r => r.data),
+    refetchInterval: 10000,
+    enabled: isSaasMode,
+  })
 
 
   const lineChartOption = {
@@ -220,6 +250,196 @@ export default function Dashboard() {
         <span className="text-[13px] font-semibold">Dashboard - {companyName || 'ISP'} Management System</span>
       </div>
 
+      {/* RADIUS Connection Status - SaaS mode only */}
+      {isSaasMode && (
+        <div className={clsx(
+          'wb-group p-3 flex items-center gap-3 border-l-4',
+          radiusStatus?.status === 'connected' ? 'border-green-500' :
+          radiusStatus?.status === 'configured' ? 'border-blue-500' :
+          radiusStatus?.status === 'ready' ? 'border-yellow-500' :
+          radiusStatus?.status === 'waiting' ? 'border-yellow-500' :
+          'border-red-500'
+        )}>
+          <SignalIcon className={clsx('w-5 h-5',
+            radiusStatus?.status === 'connected' ? 'text-green-500' :
+            radiusStatus?.status === 'configured' ? 'text-blue-500' :
+            radiusStatus?.status === 'ready' || radiusStatus?.status === 'waiting' ? 'text-yellow-500' :
+            'text-red-500'
+          )} />
+          <div className="flex-1">
+            <div className="text-[12px] font-semibold text-gray-900 dark:text-[#e0e0e0]">
+              {radiusStatus?.status === 'connected'
+                ? `RADIUS Connected \u2014 ${radiusStatus.active_sessions} active session${radiusStatus.active_sessions !== 1 ? 's' : ''}`
+                : radiusStatus?.status === 'configured'
+                ? 'RADIUS Configured \u2014 No active sessions'
+                : radiusStatus?.status === 'ready'
+                ? 'Ready \u2014 Create a subscriber and connect via PPPoE'
+                : radiusStatus?.status === 'waiting'
+                ? 'Waiting \u2014 Create a subscriber and connect via PPPoE'
+                : 'RADIUS Not Connected'}
+            </div>
+            {radiusStatus?.status === 'not_configured' && (
+              <div className="text-[10px] text-gray-500 dark:text-[#aaa]">
+                Run the MikroTik script from your welcome email to connect
+              </div>
+            )}
+            {radiusStatus?.nas_configured && radiusStatus?.connected && (
+              <div className="text-[10px] text-gray-500 dark:text-[#aaa]">
+                NAS IP: {radiusStatus.nas_ip}
+              </div>
+            )}
+          </div>
+          {/* Router VPN Status */}
+          <div className={clsx(
+            'flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-medium',
+            radiusStatus?.router_online
+              ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+              : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+          )}>
+            <span className={clsx(
+              'w-2 h-2 rounded-full',
+              radiusStatus?.router_online ? 'bg-green-500 animate-pulse' : 'bg-red-500'
+            )} />
+            {radiusStatus?.router_online ? 'Router Online' : 'Router Offline'}
+          </div>
+          {/* MikroTik Config Button */}
+          <button
+            onClick={loadConfig}
+            disabled={configLoading}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
+          >
+            <CodeBracketIcon className="w-3.5 h-3.5" />
+            {configLoading ? 'Loading...' : 'MikroTik Config'}
+          </button>
+        </div>
+      )}
+
+      {/* MikroTik Config Modal */}
+      {showConfig && configData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowConfig(false)}>
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+              <h3 className="text-[14px] font-semibold text-gray-900 dark:text-white">MikroTik Configuration</h3>
+              <button onClick={() => setShowConfig(false)} className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 text-xl">&times;</button>
+            </div>
+            <div className="p-4 space-y-4">
+              {configData.mikrotik_script && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-[12px] font-semibold text-gray-700 dark:text-gray-300">Full Setup Script (VPN + RADIUS)</label>
+                    <button
+                      onClick={() => copyScript(configData.mikrotik_script)}
+                      className="text-[11px] px-2 py-0.5 rounded bg-blue-500 text-white hover:bg-blue-600"
+                    >
+                      {copied ? 'Copied!' : 'Copy'}
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-gray-500 dark:text-gray-400 mb-2">
+                    Paste this entire command in your MikroTik terminal. It configures VPN + RADIUS automatically.
+                  </p>
+                  <pre className="bg-gray-100 dark:bg-gray-900 p-3 rounded text-[10px] text-gray-800 dark:text-gray-200 overflow-x-auto whitespace-pre-wrap break-all font-mono leading-relaxed">
+                    {configData.mikrotik_script}
+                  </pre>
+                </div>
+              )}
+              {configData.wg_client_ip && (
+                <div className="grid grid-cols-2 gap-2 text-[11px]">
+                  <div className="bg-gray-50 dark:bg-gray-700/50 p-2 rounded">
+                    <span className="text-gray-500 dark:text-gray-400">VPN IP:</span>{' '}
+                    <span className="font-mono font-medium text-gray-900 dark:text-white">{configData.wg_client_ip}</span>
+                  </div>
+                  <div className="bg-gray-50 dark:bg-gray-700/50 p-2 rounded">
+                    <span className="text-gray-500 dark:text-gray-400">Server IP:</span>{' '}
+                    <span className="font-mono font-medium text-gray-900 dark:text-white">{configData.wg_server_ip}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Trial / Plan Info - SaaS mode only */}
+      {isSaasMode && radiusStatus && (
+        <div className="wb-group p-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {/* Trial Status */}
+            <div className={clsx(
+              'flex items-center gap-3 p-2.5 rounded border',
+              radiusStatus.tenant_status === 'trial'
+                ? radiusStatus.trial_days_left <= 3
+                  ? 'border-red-300 bg-red-50 dark:border-red-800 dark:bg-red-900/20'
+                  : 'border-yellow-300 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-900/20'
+                : 'border-green-300 bg-green-50 dark:border-green-800 dark:bg-green-900/20'
+            )}>
+              <ClockIcon className={clsx('w-5 h-5 flex-shrink-0',
+                radiusStatus.tenant_status === 'trial'
+                  ? radiusStatus.trial_days_left <= 3 ? 'text-red-500' : 'text-yellow-500'
+                  : 'text-green-500'
+              )} />
+              <div>
+                <div className="text-[12px] font-semibold text-gray-900 dark:text-[#e0e0e0]">
+                  {radiusStatus.tenant_status === 'trial'
+                    ? radiusStatus.trial_days_left > 0
+                      ? `Trial \u2014 ${radiusStatus.trial_days_left} day${radiusStatus.trial_days_left !== 1 ? 's' : ''} left`
+                      : 'Trial Expired'
+                    : radiusStatus.tenant_status === 'active'
+                    ? 'Active Plan'
+                    : radiusStatus.tenant_status || 'Unknown'}
+                </div>
+                <div className="text-[10px] text-gray-500 dark:text-[#aaa]">
+                  {radiusStatus.tenant_status === 'trial'
+                    ? radiusStatus.trial_days_left > 0
+                      ? 'Upgrade to keep your panel after trial ends'
+                      : 'Your panel is read-only. Upgrade to continue.'
+                    : 'Your subscription is active'}
+                </div>
+              </div>
+            </div>
+
+            {/* Subscriber Limit */}
+            <div className="flex items-center gap-3 p-2.5 rounded border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800">
+              <UsersIcon className="w-5 h-5 text-blue-500 flex-shrink-0" />
+              <div className="flex-1">
+                <div className="text-[12px] font-semibold text-gray-900 dark:text-[#e0e0e0]">
+                  Subscribers: {radiusStatus.subscriber_count || 0} / {radiusStatus.max_subscribers || 0}
+                </div>
+                <div className="w-full h-1.5 bg-gray-200 dark:bg-gray-600 rounded-full mt-1">
+                  <div
+                    className={clsx('h-full rounded-full transition-all',
+                      (radiusStatus.subscriber_count / radiusStatus.max_subscribers) >= 0.9 ? 'bg-red-500' :
+                      (radiusStatus.subscriber_count / radiusStatus.max_subscribers) >= 0.7 ? 'bg-yellow-500' :
+                      'bg-blue-500'
+                    )}
+                    style={{ width: `${Math.min((radiusStatus.subscriber_count / (radiusStatus.max_subscribers || 1)) * 100, 100)}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Reseller Limit */}
+            <div className="flex items-center gap-3 p-2.5 rounded border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800">
+              <UserGroupIcon className="w-5 h-5 text-purple-500 flex-shrink-0" />
+              <div className="flex-1">
+                <div className="text-[12px] font-semibold text-gray-900 dark:text-[#e0e0e0]">
+                  Resellers: {radiusStatus.reseller_count || 0} / {radiusStatus.max_resellers || 0}
+                </div>
+                <div className="w-full h-1.5 bg-gray-200 dark:bg-gray-600 rounded-full mt-1">
+                  <div
+                    className={clsx('h-full rounded-full transition-all',
+                      (radiusStatus.reseller_count / radiusStatus.max_resellers) >= 0.9 ? 'bg-red-500' :
+                      (radiusStatus.reseller_count / radiusStatus.max_resellers) >= 0.7 ? 'bg-yellow-500' :
+                      'bg-purple-500'
+                    )}
+                    style={{ width: `${Math.min((radiusStatus.reseller_count / (radiusStatus.max_resellers || 1)) * 100, 100)}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Subscriber Stats */}
       <div className="wb-group">
         <div className="wb-group-title text-[11px]">Subscribers</div>
@@ -288,8 +508,8 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* System Metrics - Admin Only */}
-      {isAdmin() && (
+      {/* System Metrics - Admin Only, hidden in SaaS mode */}
+      {isAdmin() && !isSaasMode && (
         <div className="wb-group">
           <div className="wb-group-title text-[11px]">System Metrics</div>
           <div className="wb-group-body p-2">
@@ -300,8 +520,8 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Server Capacity & Cluster - Admin Only */}
-      {isAdmin() && systemCapacity && (
+      {/* Server Capacity & Cluster - Admin Only, hidden in SaaS mode */}
+      {isAdmin() && !isSaasMode && systemCapacity && (
         <div className="wb-group">
           <div className="wb-group-title text-[11px] flex items-center justify-between">
             <div className="flex items-center gap-2">

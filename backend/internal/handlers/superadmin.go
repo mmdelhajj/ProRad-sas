@@ -105,14 +105,12 @@ func (h *SuperAdminHandler) TenantLogin(c *fiber.Ctx) error {
 	// Get tenant-scoped DB
 	tenantDB := database.GetTenantDB(tenant.SchemaName)
 
-	// Find user by username or email using schema-qualified query
+	// Find user in tenant's schema (support login by username or email)
 	var user models.User
-	if err := database.DB.Raw(
-		fmt.Sprintf("SELECT * FROM %s.users WHERE (username = $1 OR email = $1) AND deleted_at IS NULL LIMIT 1", tenant.SchemaName),
-		req.Username,
-	).Scan(&user).Error; err != nil || user.ID == 0 {
+	if err := tenantDB.Where("username = ? OR email = ?", req.Username, req.Username).First(&user).Error; err != nil {
 		return c.Status(401).JSON(fiber.Map{"success": false, "message": "Invalid username or password"})
 	}
+
 	if !user.IsActive {
 		return c.Status(401).JSON(fiber.Map{"success": false, "message": "Account is disabled"})
 	}
@@ -310,16 +308,6 @@ func (h *SuperAdminHandler) CreateTenant(c *fiber.Ctx) error {
 		return c.Status(409).JSON(fiber.Map{"success": false, "message": "Subdomain already taken"})
 	}
 
-	// Check if email is already used by another tenant
-	if req.AdminEmail != "" {
-		var emailCount int64
-		database.DB.Model(&models.Tenant{}).Where("admin_email = ?", req.AdminEmail).Count(&emailCount)
-		log.Printf("SaaS: Email check for %s: count=%d", req.AdminEmail, emailCount)
-		if emailCount > 0 {
-			return c.Status(409).JSON(fiber.Map{"success": false, "message": "This email is already registered. Please use a different email."})
-		}
-	}
-
 	// Hash admin password
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(req.AdminPassword), bcrypt.DefaultCost)
 	if err != nil {
@@ -381,14 +369,35 @@ func (h *SuperAdminHandler) CreateTenant(c *fiber.Ctx) error {
 		})
 	}
 
-	// Update the template admin user with tenant-specific credentials
-	updateSQL := fmt.Sprintf("UPDATE %s.users SET username = ?, password = ?, password_plain = ?, email = ?, force_password_change = false, updated_at = NOW() WHERE user_type = 4 AND id = 1", tenant.SchemaName)
-	updateResult := database.DB.Exec(updateSQL, tenant.AdminUsername, string(passwordHash), req.AdminPassword, req.AdminEmail)
-	if updateResult.Error != nil {
-		log.Printf("SaaS: Failed to update admin user for tenant %s: %v", tenant.SchemaName, updateResult.Error)
-	} else {
-		log.Printf("SaaS: Updated admin user for tenant %s (rows: %d, email: %s)", tenant.SchemaName, updateResult.RowsAffected, req.AdminEmail)
+	// Set shared RADIUS secret
+	saasSecret := os.Getenv("SAAS_RADIUS_SECRET")
+	if saasSecret == "" {
+		saasSecret = "ProxPanel-SaaS-2026"
 	}
+	tenant.RadiusSecret = saasSecret
+	database.DB.Save(&tenant)
+
+	// Seed the tenant's admin user in their schema (update if exists from template)
+	tenantDB := database.GetTenantDB(tenant.SchemaName)
+	tenantDB.Exec(`
+		INSERT INTO users (username, password, password_plain, email, user_type, is_active, created_at, updated_at)
+		VALUES (?, ?, '', ?, 4, true, NOW(), NOW())
+		ON CONFLICT (username) DO UPDATE SET password = EXCLUDED.password, email = EXCLUDED.email
+	`, tenant.AdminUsername, string(passwordHash), req.AdminEmail)
+
+	// Auto-create NAS with shared RADIUS secret
+	nas := models.Nas{
+		Name:      "MikroTik Router",
+		ShortName: "MK1",
+		IPAddress: "0.0.0.0",
+		Secret:    saasSecret,
+		AuthPort:  1812,
+		AcctPort:  1813,
+		CoAPort:   1700,
+		APIPort:   8728,
+		IsActive:  true,
+	}
+	tenantDB.Create(&nas)
 
 	// Generate MikroTik script
 	var mikrotikScript string
@@ -497,7 +506,7 @@ func (h *SuperAdminHandler) UpdateTenant(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"success": true, "data": tenant})
 }
 
-// DeleteTenant suspends or deletes a tenant
+// DeleteTenant fully deletes a tenant (schema, NAS mapping, WireGuard peer, and record)
 func (h *SuperAdminHandler) DeleteTenant(c *fiber.Ctx) error {
 	id := c.Params("id")
 
@@ -506,14 +515,45 @@ func (h *SuperAdminHandler) DeleteTenant(c *fiber.Ctx) error {
 		return c.Status(404).JSON(fiber.Map{"success": false, "message": "Tenant not found"})
 	}
 
-	// Soft delete - just mark as suspended
-	tenant.Status = "suspended"
-	database.DB.Save(&tenant)
-
 	// Remove WireGuard peer
 	if h.wgManager != nil && tenant.WGClientPublicKey != "" {
 		h.wgManager.RemovePeer(tenant.WGClientPublicKey)
 	}
+
+	// Drop tenant schema (all tenant data)
+	if tenant.SchemaName != "" {
+		database.DB.Exec(fmt.Sprintf("DROP SCHEMA IF EXISTS %s CASCADE", tenant.SchemaName))
+		log.Printf("SaaS: Dropped schema %s for tenant %d", tenant.SchemaName, tenant.ID)
+	}
+
+	// Remove NAS tenant mapping
+	database.DB.Exec("DELETE FROM admin.nas_tenant_map WHERE tenant_id = ?", tenant.ID)
+
+	// Delete tenant record
+	database.DB.Unscoped().Delete(&tenant)
+
+	log.Printf("SaaS: Deleted tenant %d (%s)", tenant.ID, tenant.Subdomain)
+	return c.JSON(fiber.Map{"success": true, "message": fmt.Sprintf("Tenant '%s' deleted", tenant.Subdomain)})
+}
+
+// SuspendTenant suspends a tenant without deleting data
+func (h *SuperAdminHandler) SuspendTenant(c *fiber.Ctx) error {
+	id := c.Params("id")
+
+	var tenant models.Tenant
+	if err := database.DB.First(&tenant, id).Error; err != nil {
+		return c.Status(404).JSON(fiber.Map{"success": false, "message": "Tenant not found"})
+	}
+
+	if tenant.Status == "suspended" {
+		// Unsuspend
+		tenant.Status = "trial"
+		database.DB.Save(&tenant)
+		return c.JSON(fiber.Map{"success": true, "message": "Tenant reactivated"})
+	}
+
+	tenant.Status = "suspended"
+	database.DB.Save(&tenant)
 
 	return c.JSON(fiber.Map{"success": true, "message": "Tenant suspended"})
 }
@@ -542,6 +582,71 @@ func (h *SuperAdminHandler) GetTenantScript(c *fiber.Ctx) error {
 			"wg_client_ip":   tenant.WGClientIP,
 			"wg_server_ip":   tenant.WGServerIP,
 			"radius_secret":  tenant.RadiusSecret,
+		},
+	})
+}
+
+// ResendWelcomeEmail resends the MikroTik setup email to a tenant
+func (h *SuperAdminHandler) ResendWelcomeEmail(c *fiber.Ctx) error {
+	id := c.Params("id")
+
+	var tenant models.Tenant
+	if err := database.DB.First(&tenant, id).Error; err != nil {
+		return c.Status(404).JSON(fiber.Map{"success": false, "message": "Tenant not found"})
+	}
+
+	// Generate MikroTik script
+	var mikrotikScript string
+	if h.wgManager != nil {
+		mikrotikScript = h.wgManager.GenerateMikroTikScript(&tenant)
+	}
+
+	// Generate MikroTik RADIUS commands
+	serverIP := os.Getenv("SERVER_IP")
+	if serverIP == "" {
+		serverIP = "139.162.153.201"
+	}
+	saasSecret := tenant.RadiusSecret
+	if saasSecret == "" {
+		saasSecret = os.Getenv("SAAS_RADIUS_SECRET")
+		if saasSecret == "" {
+			saasSecret = "ProxPanel-SaaS-2026"
+		}
+	}
+
+	panelURL := fmt.Sprintf("https://%s.saas.proxrad.com", tenant.Subdomain)
+
+	emailBody := fmt.Sprintf(`<html><body>
+<h2>Welcome to ProxPanel!</h2>
+<p>Your panel is ready:</p>
+<ul>
+  <li><b>URL:</b> <a href="%s">%s</a></li>
+  <li><b>Username:</b> %s</li>
+</ul>
+<h3>MikroTik Connection Script</h3>
+<p>Paste this <b>single command</b> in your MikroTik terminal — it configures VPN, API access, and RADIUS automatically:</p>
+<pre style="background:#f4f4f4;padding:10px;border-radius:4px;font-family:monospace;font-size:12px;overflow-x:auto;white-space:pre-wrap;word-break:break-all">%s</pre>
+<p>After pasting, verify with: <code>/ping 10.100.25.1</code></p>
+<p>Your dashboard will show "RADIUS Connected" once the first subscriber connects via PPPoE.</p>
+</body></html>`,
+		panelURL, panelURL,
+		tenant.AdminUsername,
+		mikrotikScript,
+	)
+
+	emailService := services.NewEmailService()
+	if err := emailService.SendEmail(tenant.AdminEmail, "ProxPanel — Updated MikroTik Setup Script", emailBody, true); err != nil {
+		log.Printf("SaaS: Failed to send email to %s: %v", tenant.AdminEmail, err)
+		return c.Status(500).JSON(fiber.Map{"success": false, "message": fmt.Sprintf("Failed to send email: %v", err)})
+	}
+
+	log.Printf("SaaS: Resent welcome email to %s for tenant %s", tenant.AdminEmail, tenant.Subdomain)
+
+	return c.JSON(fiber.Map{
+		"success": true,
+		"message": fmt.Sprintf("Email sent to %s", tenant.AdminEmail),
+		"data": fiber.Map{
+			"script": mikrotikScript,
 		},
 	})
 }

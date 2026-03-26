@@ -65,6 +65,17 @@ export const useAuthStore = create((set, get) => ({
   // Initialize from storage
   ...initialState,
   isImpersonated: isImpersonatedTab,
+  isSaasMode: false,
+
+  checkSaasMode: async () => {
+    try {
+      const res = await fetch('/health')
+      const data = await res.json()
+      if (data?.is_saas) {
+        set({ isSaasMode: true })
+      }
+    } catch (e) {}
+  },
 
   // Detect SaaS tenant subdomain from current hostname
   getTenantSubdomain: () => {

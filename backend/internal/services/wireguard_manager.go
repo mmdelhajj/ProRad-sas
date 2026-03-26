@@ -97,6 +97,13 @@ func (wg *WireGuardManager) SetupTenantVPN(tenant *models.Tenant) error {
 	tenant.WGServerIP = fmt.Sprintf("10.100.%d.1", tenantOctet)
 	tenant.WGClientIP = fmt.Sprintf("10.100.%d.2", tenantOctet)
 	tenant.MikrotikAPIIP = tenant.WGClientIP // MikroTik reachable via VPN
+	tenant.MikrotikAPIPort = 8728
+	tenant.MikrotikAPIUser = "proxrad"
+
+	// Generate MikroTik API password for remote management
+	apiPassBytes := make([]byte, 12)
+	rand.Read(apiPassBytes)
+	tenant.MikrotikAPIPassword = base64.URLEncoding.EncodeToString(apiPassBytes)[:16]
 
 	// Generate a random RADIUS secret
 	secretBytes := make([]byte, 16)
@@ -229,14 +236,15 @@ func (wg *WireGuardManager) GetServerPublicKey() (string, error) {
 func (wg *WireGuardManager) GenerateMikroTikScript(tenant *models.Tenant) string {
 	serverPubKey, _ := wg.GetServerPublicKey()
 
-	// Everything on ONE line with semicolons, like Zima does
-	// MikroTik parses the whole { } block as one command — no line-wrap issues
+	// RouterOS v7 compatible script — everything on ONE line with semicolons
+	// Key v7 fixes: separate /ppp aaa and /radius incoming commands, :if prefix for fasttrack
 	script := fmt.Sprintf(
 		`:{put "\n\n\n\n\r================================\r\n   ProxRad Connection Script\r\n================================\n"; `+
 			`/interface wireguard peers remove [find where interface="proxrad-vpn"]; `+
 			`/interface wireguard remove [find where name="proxrad-vpn"]; `+
 			`/ip firewall filter remove [find where comment~"proxrad"]; `+
 			`/radius remove [find where comment="proxrad"]; `+
+			`/user remove [find where name="proxrad"]; `+
 			`put "Cleaning old config... Done!"; `+
 			`/interface wireguard add name=proxrad-vpn mtu=1420 listen-port=0 private-key="%s"; `+
 			`put "Creating VPN interface... Done!"; `+
@@ -246,19 +254,21 @@ func (wg *WireGuardManager) GenerateMikroTikScript(tenant *models.Tenant) string
 			`put "Assigning VPN IP... Done!"; `+
 			`/ip firewall filter add chain=input src-address=10.100.0.0/16 in-interface=proxrad-vpn action=accept place-before=*0 comment="#proxrad"; `+
 			`put "Adding firewall rule... Done!"; `+
-			`/ip service set api port=8728 disabled=no; `+
-			`:local avfarr [/ip service get api address]; :local avfrom [tostr [/ip service get api address]]; :local avf value=""; :if (([:len $avfrom] > 0) && ([:find $avfarr "10.100.0.0/16" -1] < 0)) do={set avf ($avfrom.";10.100.0.0/16");}; :local newavf value=""; :if ([:find $avf ";" -1] > 0) do={  :for i from=0 to=([:len $avf] -1) step=1 do={   :local char value=[:pick $avf $i]; :if ($char = ";") do={ :set char value="," }; :set newavf value=($newavf.$char);  }; /ip service set api address=$newavf; }; `+
-			`put "Configuring API Access... Done!"; `+
+			`/ip service set api port=8728 disabled=no address=10.100.0.0/16; `+
+			`/user add name=proxrad password="%s" group=full comment="ProxRad SaaS API"; `+
+			`put "Creating API user... Done!"; `+
 			`/radius add address=%s secret="%s" service=ppp timeout=3000ms comment="proxrad"; `+
-			`/ppp aaa set use-radius=yes radius-incoming-port=1700; `+
+			`/ppp aaa set use-radius=yes; `+
+			`/radius incoming set accept=yes port=1700; `+
 			`put "Configuring RADIUS... Done!"; `+
-			`if ([len [tostr [/ip firewall filter find action=fasttrack-connection disabled=no]]]>0) do={put "Disabling Fasttrack rules... Reboot Recommended"; /ip firewall filter disable [/ip firewall filter find action=fasttrack-connection];} else={ /ip firewall filter disable [/ip firewall filter find action=fasttrack-connection]; put "Disabling Fasttrack rules... Done!";}; `+
-			`put "\r\n================================================================\r\nSUCCESS!! Your router is connected to ProxRad SaaS!\r\nPanel URL: https://%s.saas.proxrad.com\r\nVPN IP: %s\r\nVerify: /ping %s\r\n================================================================\r\n\n\n\n"; }`,
+			`:if ([len [tostr [/ip firewall filter find action=fasttrack-connection disabled=no]]]>0) do={/ip firewall filter disable [/ip firewall filter find action=fasttrack-connection];}; `+
+			`put "\r\nSUCCESS!! Your router is connected to ProxRad SaaS!\r\nPanel URL: https://%s.saas.proxrad.com\r\nVPN IP: %s\r\nVerify: /ping %s\r\n"; }`,
 		tenant.WGClientPrivateKey,
 		serverPubKey,
 		wg.serverIP,
 		wg.listenPort,
 		tenant.WGClientIP,
+		tenant.MikrotikAPIPassword,
 		tenant.WGServerIP,
 		tenant.RadiusSecret,
 		tenant.Subdomain,
@@ -294,6 +304,22 @@ func (wg *WireGuardManager) AddPeer(tenant *models.Tenant) error {
 			log.Printf("WireGuard: Note: could not add server IP %s: %s", tenant.WGServerIP, string(output))
 		} else {
 			log.Printf("WireGuard: Added server IP %s to wg0", tenant.WGServerIP)
+		}
+	}
+
+	// Add a specific route for the tenant's subnet with correct source IP
+	// This ensures API connections to the MikroTik use the tenant's server IP as source,
+	// which the MikroTik will route back through the WireGuard tunnel
+	if tenant.WGServerIP != "" && tenant.WGSubnet != "" {
+		// Extract /24 subnet from WGSubnet (e.g., "10.100.25.0/24")
+		routeCmd := exec.Command("ip", "route", "replace", tenant.WGSubnet, "dev", "wg0", "src", tenant.WGServerIP)
+		if _, err := os.Stat("/.dockerenv"); err == nil {
+			routeCmd = exec.Command("nsenter", "--target", "1", "--net", "--", "ip", "route", "replace", tenant.WGSubnet, "dev", "wg0", "src", tenant.WGServerIP)
+		}
+		if output, err := routeCmd.CombinedOutput(); err != nil {
+			log.Printf("WireGuard: Note: could not add route for %s: %s", tenant.WGSubnet, string(output))
+		} else {
+			log.Printf("WireGuard: Added route %s src %s", tenant.WGSubnet, tenant.WGServerIP)
 		}
 	}
 

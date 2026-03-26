@@ -120,7 +120,7 @@ const allNavigation = [
     ]
   },
   { name: 'Public IPs', href: '/public-ips', icon: GlobeAltIcon, permission: 'public_ips.view' },
-  { name: 'NAS/Routers', href: '/nas', icon: ServerIcon, permission: 'nas.view' },
+  { name: 'NAS/Routers', href: '/nas', icon: ServerIcon, permission: 'nas.view', saasHidden: true },
   { name: 'Resellers', href: '/resellers', icon: BuildingOfficeIcon, permission: 'resellers.view' },
   { name: 'Sessions', href: '/sessions', icon: SignalIcon, permission: 'sessions.view' },
   { name: 'Speed Rules', href: '/bandwidth', icon: AdjustmentsHorizontalIcon, permission: 'bandwidth.view' },
@@ -135,9 +135,9 @@ const allNavigation = [
   { name: 'Branding', href: '/reseller-branding', icon: PaintBrushIcon, permission: null, resellerOnly: true, rebrandOnly: true },
   { name: 'Users', href: '/users', icon: UserGroupIcon, permission: 'users.view' },
   { name: 'Permissions', href: '/permissions', icon: ShieldCheckIcon, permission: 'permissions.view' },
-  { name: 'Audit Logs', href: '/audit', icon: ClipboardDocumentListIcon, permission: 'audit.view' },
-  { name: 'Logs', href: '/logs', icon: DocumentTextIcon, permission: 'logs.view' },
-  { name: 'Backups', href: '/backups', icon: CloudArrowUpIcon, permission: 'backups.view' },
+  { name: 'Audit Logs', href: '/audit', icon: ClipboardDocumentListIcon, permission: 'audit.view', saasHidden: true },
+  { name: 'Logs', href: '/logs', icon: DocumentTextIcon, permission: 'logs.view', saasHidden: true },
+  { name: 'Backups', href: '/backups', icon: CloudArrowUpIcon, permission: 'backups.view', saasHidden: true },
   { name: 'WAN Check', href: '/wan-check', icon: SignalIcon, permission: 'settings.wan_check', resellerOnly: true },
   { name: 'Settings', href: '/settings', icon: CogIcon, permission: 'settings.view' },
   { name: 'Change Bulk', href: '/change-bulk', icon: QueueListIcon, permission: 'subscribers.change_bulk' },
@@ -160,7 +160,7 @@ export default function Layout({ children }) {
 
   const location = useLocation()
   const navigate = useNavigate()
-  const { user, logout, hasPermission, isAdmin, isReseller, isCollector, refreshUser } = useAuthStore()
+  const { user, logout, hasPermission, isAdmin, isReseller, isCollector, refreshUser, isSaasMode, checkSaasMode } = useAuthStore()
   const { companyName, fetchBranding, loaded } = useBrandingStore()
   const { theme, toggleTheme } = useThemeStore()
   const queryClient = useQueryClient()
@@ -196,12 +196,13 @@ export default function Layout({ children }) {
     }).catch(() => {})
   }, [])
 
-  // Fetch branding on mount
+  // Fetch branding + SaaS mode on mount
   useEffect(() => {
     if (!loaded) {
       fetchBranding()
     }
-  }, [loaded, fetchBranding])
+    checkSaasMode()
+  }, [loaded, fetchBranding, checkSaasMode])
 
   // Refresh reseller balance periodically
   useEffect(() => {
@@ -265,6 +266,8 @@ export default function Layout({ children }) {
   // Filter and order navigation based on permissions + saved order
   useEffect(() => {
     const filtered = allNavigation.filter((item) => {
+      // Hide items in SaaS mode
+      if (item.saasHidden && isSaasMode) return false
       // Collector users only see collectorOnly items
       if (isCollector()) return !!item.collectorOnly
       // Non-collector users never see collectorOnly items
@@ -278,7 +281,7 @@ export default function Layout({ children }) {
     const savedOrder = getSavedMenuOrder()
     const ordered = applyMenuOrder(filtered, savedOrder)
     setOrderedNav(ordered)
-  }, [hasPermission, isAdmin, isReseller, isCollector, user])
+  }, [hasPermission, isAdmin, isReseller, isCollector, user, isSaasMode])
 
   const handleLogout = () => {
     logout()
@@ -337,6 +340,7 @@ export default function Layout({ children }) {
     localStorage.removeItem('menuHidden')
     setHiddenItems(new Set())
     const filtered = allNavigation.filter((item) => {
+      if (item.saasHidden && isSaasMode) return false
       if (isCollector()) return !!item.collectorOnly
       if (item.collectorOnly) return false
       if (item.rebrandOnly) return isReseller() && user?.reseller?.rebrand_enabled

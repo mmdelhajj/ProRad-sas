@@ -33,8 +33,9 @@ FROM alpine:3.19
 
 WORKDIR /app
 
-# Install ca-certificates, timezone, postgresql-client for backups, and freeradius-utils for radclient CoA
-RUN apk --no-cache add ca-certificates tzdata postgresql-client freeradius-utils
+# Install ca-certificates, timezone, postgresql-client for backups, freeradius-utils for radclient CoA,
+# and wireguard-tools for WireGuard management (wg command needed for key derivation via nsenter)
+RUN apk --no-cache add ca-certificates tzdata postgresql-client freeradius-utils wireguard-tools
 
 # Copy binary from builder
 COPY --from=builder /api .

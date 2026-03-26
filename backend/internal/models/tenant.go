@@ -12,6 +12,7 @@ type Tenant struct {
 	Status     string   `gorm:"column:status;size:20;default:active" json:"status"`
 	Plan       string   `gorm:"column:plan;size:50;default:free" json:"plan"`
 	MaxSubscribers int  `gorm:"column:max_subscribers;default:50" json:"max_subscribers"`
+	MaxResellers   int  `gorm:"column:max_resellers;default:2" json:"max_resellers"`
 	MaxRouters     int  `gorm:"column:max_routers;default:1" json:"max_routers"`
 
 	// WireGuard
