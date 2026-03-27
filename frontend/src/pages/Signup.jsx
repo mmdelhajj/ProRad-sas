@@ -239,7 +239,7 @@ function LandingView({ onGetStarted }) {
 // Signup Form
 // ──────────────────────────────────────
 function SignupForm({ onSuccess, onBack }) {
-  const [form, setForm] = useState({ name: '', subdomain: '', admin_username: 'admin', email: '', password: '', confirmPassword: '' })
+  const [form, setForm] = useState({ name: '', subdomain: '', email: '', password: '', confirmPassword: '' })
   const [subdomainStatus, setSubdomainStatus] = useState(null) // null | 'checking' | 'available' | 'taken' | 'invalid'
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -291,12 +291,12 @@ function SignupForm({ onSuccess, onBack }) {
       const res = await axios.post('/api/saas/signup', {
         name: form.name,
         subdomain: form.subdomain,
-        admin_username: form.admin_username,
+        admin_username: form.email,
         email: form.email,
         password: form.password,
       })
       if (res.data.success) {
-        onSuccess({ ...res.data.data, admin_username: form.admin_username, email: form.email, password: form.password })
+        onSuccess({ ...res.data.data, email: form.email, password: form.password })
       } else {
         setError(res.data.message || 'Signup failed')
       }
@@ -517,7 +517,7 @@ function SetupWizard({ data }) {
           border: `1px solid ${COLORS.border}`, marginBottom: 20,
         }}>
           {fieldRow('Panel URL', panelUrl, false)}
-          {fieldRow('Username', data.admin_username || 'admin', true)}
+          {fieldRow('Username', data.email, true)}
           {fieldRow('Password', data.password || '', true)}
         </div>
 

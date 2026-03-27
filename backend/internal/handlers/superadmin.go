@@ -526,11 +526,17 @@ func (h *SuperAdminHandler) DeleteTenant(c *fiber.Ctx) error {
 		log.Printf("SaaS: Dropped schema %s for tenant %d", tenant.SchemaName, tenant.ID)
 	}
 
-	// Remove NAS tenant mapping
+	// Remove related records (FK constraints)
 	database.DB.Exec("DELETE FROM admin.nas_tenant_map WHERE tenant_id = ?", tenant.ID)
+	database.DB.Exec("DELETE FROM admin.plan_change_requests WHERE tenant_id = ?", tenant.ID)
+	database.DB.Exec("DELETE FROM admin.billing_events WHERE tenant_id = ?", tenant.ID)
+	database.DB.Exec("DELETE FROM admin.tenant_brandings WHERE tenant_id = ?", tenant.ID)
 
-	// Delete tenant record
-	database.DB.Unscoped().Delete(&tenant)
+	// Delete tenant record (hard delete)
+	if err := database.DB.Exec("DELETE FROM admin.tenants WHERE id = ?", tenant.ID).Error; err != nil {
+		log.Printf("SaaS: Failed to delete tenant %d: %v", tenant.ID, err)
+		return c.Status(500).JSON(fiber.Map{"success": false, "message": fmt.Sprintf("Failed to delete: %v", err)})
+	}
 
 	log.Printf("SaaS: Deleted tenant %d (%s)", tenant.ID, tenant.Subdomain)
 	return c.JSON(fiber.Map{"success": true, "message": fmt.Sprintf("Tenant '%s' deleted", tenant.Subdomain)})

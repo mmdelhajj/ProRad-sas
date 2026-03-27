@@ -50,10 +50,8 @@ func (h *OnboardingHandler) Signup(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"success": false, "message": "Invalid request"})
 	}
 
-	// Default admin username
-	if req.AdminUsername == "" {
-		req.AdminUsername = "admin"
-	}
+	// Use email as username (cleaner login experience)
+	req.AdminUsername = req.Email
 
 	// Validate required fields
 	if req.Name == "" || req.Email == "" || req.Subdomain == "" || req.Password == "" {
