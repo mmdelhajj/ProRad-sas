@@ -878,6 +878,7 @@ export default function Settings() {
       { key: 'downgrade_change_service_fee', label: 'Downgrade Fee ($)', type: 'number', placeholder: '0', description: 'Fee charged when subscriber downgrades to a lower-priced service' },
       { key: 'allow_downgrade', label: 'Allow Downgrade', type: 'toggle', description: 'Allow subscribers to change to a lower-priced service' },
       { key: 'downgrade_refund', label: 'Refund on Downgrade', type: 'toggle', description: 'Refund the difference when downgrading (prorate credit)' },
+      { key: 'topup_data_price_per_gb', label: 'Data Top-Up Price per GB ($)', type: 'number', placeholder: '0.50', description: 'Price per GB for data top-up. Set to 0 to disable. Customers can buy extra GB from their portal.' },
     ],
     radius: [
       { key: 'daily_quota_reset_time', label: 'Daily Quota Reset Time', type: 'time', placeholder: '00:00' },

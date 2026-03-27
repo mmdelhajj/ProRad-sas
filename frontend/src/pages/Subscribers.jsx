@@ -25,6 +25,7 @@ import {
   ChevronRightIcon,
   ArrowUpTrayIcon,
   DocumentArrowUpIcon,
+  ArrowUpIcon,
   ArchiveBoxIcon,
   ArrowUturnLeftIcon,
   XMarkIcon,
@@ -457,6 +458,18 @@ export default function Subscribers() {
     onError: (err) => toast.error(err.response?.data?.message || 'Failed to add balance'),
   })
 
+  const topUpDataMutation = useMutation({
+    mutationFn: ({ id, gb, reason }) => subscriberApi.topUpData(id, { gb, reason }),
+    onSuccess: (res) => {
+      toast.success(res.data?.message || 'Data top-up added')
+      setActionModal(null)
+      setActionValue('')
+      setActionReason('')
+      queryClient.invalidateQueries(['subscribers'])
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Failed to add data'),
+  })
+
   const pingMutation = useMutation({
     mutationFn: (id) => subscriberApi.ping(id),
     onSuccess: (res) => {
@@ -609,6 +622,9 @@ export default function Subscribers() {
         case 'refill':
         case 'add_balance':
           setActionModal({ type: 'add_balance', subscriber: sub })
+          break
+        case 'topup_data':
+          setActionModal({ type: 'topup_data', subscriber: sub })
           break
       }
     }
@@ -801,7 +817,12 @@ export default function Subscribers() {
               const bytes = (row.original.monthly_download_used || 0) + (row.original.monthly_upload_used || 0)
               const gb = bytes / 1073741824
               const label = gb >= 1 ? `${gb.toFixed(1)} GB` : `${(bytes / 1048576).toFixed(0)} MB`
-              return <span className="badge-indigo">{label}</span>
+              const bonus = row.original.monthly_bonus_quota || 0
+              const bonusGB = bonus / 1073741824
+              return <>
+                <span className="badge-indigo">{label}</span>
+                {bonusGB > 0 && <span className="badge-purple ml-1" title="Bonus data top-up">+{bonusGB.toFixed(0)}GB</span>}
+              </>
             })()}
           </div>
         ),
@@ -1450,6 +1471,12 @@ export default function Subscribers() {
               <span className="hide-mobile">Add Balance</span>
             </button>
           )}
+          {hasPermission('subscribers.refill_quota') && (
+            <button onClick={() => executeAction('topup_data')} disabled={selectedCount !== 1} className="btn btn-sm" title="Top-Up Data" style={{ color: '#7c3aed' }}>
+              <ArrowUpIcon style={{ width: 14, height: 14, marginRight: 2 }} />
+              <span className="hide-mobile">Top-Up GB</span>
+            </button>
+          )}
           {hasPermission('subscribers.ping') && (
             <button onClick={() => executeAction('ping')} disabled={selectedCount !== 1} className="btn btn-sm" title="Ping">
               <WifiIcon style={{ width: 14, height: 14, marginRight: 2 }} />
@@ -1969,6 +1996,51 @@ export default function Subscribers() {
                 className="btn btn-primary"
               >
                 {addBalanceMutation.isPending ? 'Adding...' : 'Add Balance'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Top-Up Data Modal */}
+      {actionModal?.type === 'topup_data' && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <div className="modal-header" style={{ background: '#7c3aed' }}>
+              <span>Top-Up Data (GB)</span>
+              <button onClick={() => { setActionModal(null); setActionValue(''); setActionReason(''); }} className="btn btn-ghost btn-xs" style={{ color: 'white' }}>
+                <XMarkIcon style={{ width: 14, height: 14 }} />
+              </button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ color: '#666' }}>User: <strong>{actionModal.subscriber.username}</strong></div>
+              <div style={{ color: '#7c3aed', fontWeight: 500 }}>Monthly FUP Level: {actionModal.subscriber.monthly_fup_level || 0}</div>
+              <div>
+                <label className="label">GB to Add *</label>
+                <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
+                  {[5, 10, 20, 50, 100].map(gb => (
+                    <button key={gb} onClick={() => setActionValue(String(gb))}
+                      className={`btn btn-xs ${String(gb) === actionValue ? '' : 'btn-ghost'}`}
+                      style={String(gb) === actionValue ? { background: '#7c3aed', color: 'white' } : {}}>
+                      {gb} GB
+                    </button>
+                  ))}
+                </div>
+                <input type="number" min="1" value={actionValue} onChange={(e) => setActionValue(e.target.value)} className="input" placeholder="Or enter custom GB" />
+              </div>
+              <div>
+                <label className="label">Reason</label>
+                <input type="text" value={actionReason} onChange={(e) => setActionReason(e.target.value)} className="input" placeholder="e.g. Customer request, gift, promo..." />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button onClick={() => { setActionModal(null); setActionValue(''); setActionReason(''); }} className="btn">Cancel</button>
+              <button
+                onClick={() => topUpDataMutation.mutate({ id: actionModal.subscriber.id, gb: parseInt(actionValue), reason: actionReason })}
+                disabled={!actionValue || parseInt(actionValue) <= 0 || topUpDataMutation.isPending}
+                className="btn" style={{ background: '#7c3aed', color: 'white' }}
+              >
+                {topUpDataMutation.isPending ? 'Adding...' : `Add ${actionValue || 0} GB`}
               </button>
             </div>
           </div>

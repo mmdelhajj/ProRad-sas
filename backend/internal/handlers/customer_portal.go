@@ -11,6 +11,7 @@ import (
 	"github.com/proisp/backend/internal/database"
 	"github.com/proisp/backend/internal/models"
 	"github.com/proisp/backend/internal/security"
+	"gorm.io/gorm"
 )
 
 type CustomerPortalHandler struct {
@@ -77,8 +78,10 @@ type CustomerDashboard struct {
 	MonthlyUploadUsed   int64 `json:"monthly_upload_used"`   // bytes
 
 	// Quotas from service
-	DailyQuota   int64 `json:"daily_quota"`   // bytes (0 = unlimited)
-	MonthlyQuota int64 `json:"monthly_quota"` // bytes (0 = unlimited)
+	DailyQuota        int64 `json:"daily_quota"`         // bytes (0 = unlimited)
+	MonthlyQuota      int64 `json:"monthly_quota"`       // bytes (0 = unlimited)
+	MonthlyBonusQuota int64 `json:"monthly_bonus_quota"` // bytes, total bonus purchased
+	MonthlyBonusUsed  int64 `json:"monthly_bonus_used"`  // bytes, how much bonus consumed
 
 	// Pricing
 	Price         float64 `json:"price"`
@@ -302,6 +305,8 @@ func (h *CustomerPortalHandler) Dashboard(c *fiber.Ctx) error {
 		MonthlyUploadUsed:    subscriber.MonthlyUploadUsed,
 		DailyQuota:           subscriber.Service.DailyQuota,
 		MonthlyQuota:         subscriber.Service.MonthlyQuota,
+		MonthlyBonusQuota:    subscriber.MonthlyBonusQuota,
+		MonthlyBonusUsed:     subscriber.MonthlyBonusUsed,
 		Price:                effectivePrice,
 		OverridePrice:        subscriber.OverridePrice,
 		Balance:              subscriber.Balance,
@@ -998,12 +1003,21 @@ func (h *CustomerPortalHandler) AvailableServices(c *fiber.Ctx) error {
 		}
 	}
 
+	// Check if change plan is enabled (global + reseller)
+	changeEnabled := getSystemPreferenceBool("customer_change_service", true)
+	if changeEnabled && subscriber.ResellerID > 0 {
+		var reseller models.Reseller
+		if err := database.DB.First(&reseller, subscriber.ResellerID).Error; err == nil {
+			changeEnabled = reseller.CustomerChangePlan
+		}
+	}
+
 	return c.JSON(fiber.Map{
 		"success":                true,
 		"data":                   result,
 		"balance":                subscriber.Balance,
 		"current_service_id":     subscriber.ServiceID,
-		"change_service_enabled": getSystemPreferenceBool("customer_change_service", true),
+		"change_service_enabled": changeEnabled,
 		"allow_downgrade":        getSystemPreferenceBool("allow_downgrade", true),
 	})
 }
@@ -1024,10 +1038,20 @@ func (h *CustomerPortalHandler) ChangeService(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"success": false, "message": "Subscriber not found"})
 	}
 
-	// Check if self-service plan change is enabled (check first before anything else)
+	// Check if self-service plan change is enabled globally
 	allowSelfChange := getSystemPreferenceBool("customer_change_service", true)
 	if !allowSelfChange {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"success": false, "message": "Plan changes are disabled. Contact your provider."})
+	}
+
+	// Check if reseller enabled it for their subscribers
+	if subscriber.ResellerID > 0 {
+		var reseller models.Reseller
+		if err := database.DB.First(&reseller, subscriber.ResellerID).Error; err == nil {
+			if !reseller.CustomerChangePlan {
+				return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"success": false, "message": "Plan changes are disabled. Contact your provider."})
+			}
+		}
 	}
 
 	if req.ServiceID == subscriber.ServiceID {
@@ -1174,5 +1198,120 @@ func (h *CustomerPortalHandler) ChangeService(c *fiber.Ctx) error {
 		"charged":       chargeAmount,
 		"refunded":      refundAmount,
 		"prorated_days": remainingDays,
+	})
+}
+
+// TopUpData allows a customer to buy extra GB from their balance
+func (h *CustomerPortalHandler) TopUpData(c *fiber.Ctx) error {
+	username := c.Locals("customer_username").(string)
+
+	var req struct {
+		GB int `json:"gb"`
+	}
+	if err := c.BodyParser(&req); err != nil || req.GB <= 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"success": false, "message": "GB amount must be positive"})
+	}
+
+	var subscriber models.Subscriber
+	if err := database.DB.Preload("Service").Where("username = ?", username).First(&subscriber).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"success": false, "message": "Subscriber not found"})
+	}
+
+	// Get price per GB from settings
+	pricePerGB := getSystemPreferenceFloat("topup_data_price_per_gb", 0)
+	if pricePerGB <= 0 {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"success": false, "message": "Data top-up is not available. Contact your provider."})
+	}
+
+	totalCost := pricePerGB * float64(req.GB)
+	totalCost = math.Round(totalCost*100) / 100
+
+	// Check balance
+	if subscriber.Balance < totalCost {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"success": false,
+			"message": fmt.Sprintf("Insufficient balance. Need $%.2f for %d GB. Current balance: $%.2f", totalCost, req.GB, subscriber.Balance),
+		})
+	}
+
+	// Add bonus quota (GB to bytes)
+	bonusBytes := int64(req.GB) * 1024 * 1024 * 1024
+	newBalance := math.Round((subscriber.Balance-totalCost)*100) / 100
+
+	database.DB.Model(&models.Subscriber{}).Where("id = ?", subscriber.ID).Updates(map[string]interface{}{
+		"monthly_bonus_quota": gorm.Expr("monthly_bonus_quota + ?", bonusBytes),
+		"monthly_bonus_used":  0, // Reset — new bonus starts fresh
+		"balance":             newBalance,
+		"monthly_fup_level":   0,
+	})
+
+	// Record in bonus_topups history
+	database.DB.Create(&models.BonusTopUp{
+		SubscriberID: subscriber.ID,
+		GB:           req.GB,
+		Bytes:        bonusBytes,
+		PricePerGB:   pricePerGB,
+		TotalCost:    totalCost,
+		Source:       "customer",
+		CreatedBy:    username,
+	})
+
+	// Transaction
+	subID := subscriber.ID
+	database.DB.Create(&models.Transaction{
+		SubscriberID:   &subID,
+		Amount:         -totalCost,
+		BalanceBefore:  subscriber.Balance,
+		BalanceAfter:   newBalance,
+		Type:           "data_topup",
+		Description:    fmt.Sprintf("Data top-up: %d GB ($%.2f/GB)", req.GB, pricePerGB),
+	})
+
+	return c.JSON(fiber.Map{
+		"success":     true,
+		"message":     fmt.Sprintf("Added %d GB. Speed will restore within 30 seconds.", req.GB),
+		"new_balance": newBalance,
+		"gb_added":    req.GB,
+		"charged":     totalCost,
+	})
+}
+
+// GetTopUpInfo returns top-up pricing and current bonus quota
+func (h *CustomerPortalHandler) GetTopUpInfo(c *fiber.Ctx) error {
+	username := c.Locals("customer_username").(string)
+
+	var subscriber models.Subscriber
+	if err := database.DB.Where("username = ?", username).First(&subscriber).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"success": false, "message": "Subscriber not found"})
+	}
+
+	pricePerGB := getSystemPreferenceFloat("topup_data_price_per_gb", 0)
+
+	return c.JSON(fiber.Map{
+		"success":       true,
+		"price_per_gb":       pricePerGB,
+		"enabled":            pricePerGB > 0,
+		"balance":            subscriber.Balance,
+		"bonus_quota_gb":     float64(subscriber.MonthlyBonusQuota) / 1024 / 1024 / 1024,
+		"bonus_used_gb":      float64(subscriber.MonthlyBonusUsed) / 1024 / 1024 / 1024,
+		"bonus_remaining_gb": float64(subscriber.MonthlyBonusQuota-subscriber.MonthlyBonusUsed) / 1024 / 1024 / 1024,
+	})
+}
+
+// GetBonusHistory returns the subscriber's data top-up purchase history
+func (h *CustomerPortalHandler) GetBonusHistory(c *fiber.Ctx) error {
+	username := c.Locals("customer_username").(string)
+
+	var subscriber models.Subscriber
+	if err := database.DB.Where("username = ?", username).First(&subscriber).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"success": false, "message": "Subscriber not found"})
+	}
+
+	var topups []models.BonusTopUp
+	database.DB.Where("subscriber_id = ?", subscriber.ID).Order("created_at DESC").Limit(50).Find(&topups)
+
+	return c.JSON(fiber.Map{
+		"success": true,
+		"data":    topups,
 	})
 }

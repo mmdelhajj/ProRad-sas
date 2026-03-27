@@ -231,6 +231,7 @@ export const subscriberApi = {
   deactivate: (id) => api.post(`/subscribers/${id}/deactivate`),
   refill: (id, data) => api.post(`/subscribers/${id}/refill`, data),
   addBalance: (id, data) => api.post(`/subscribers/${id}/add-balance`, data),
+  topUpData: (id, data) => api.post(`/subscribers/${id}/topup-data`, data),
   ping: (id) => api.post(`/subscribers/${id}/ping`),
   portCheck: (id, port) => api.post(`/subscribers/${id}/port-check`, { port }),
   getPassword: (id) => api.get(`/subscribers/${id}/password`),
@@ -601,9 +602,45 @@ export const publicIPApi = {
   getAvailableIPs: (poolId) => api.get(`/public-ips/pools/${poolId}/available-ips`),
 }
 
+// SaaS Plans API
+export const plansApi = {
+  list: () => api.get('/saas/admin/plans'),
+  listPublic: () => api.get('/saas/plans'),
+  create: (data) => api.post('/saas/admin/plans', data),
+  update: (id, data) => api.put(`/saas/admin/plans/${id}`, data),
+  delete: (id) => api.delete(`/saas/admin/plans/${id}`),
+}
+
 // Customer Portal Public IP
 export const customerPublicIPApi = {
   get: () => api.get('/customer/public-ip'),
   buy: (data) => api.post('/customer/public-ip/buy', data),
   release: () => api.post('/customer/public-ip/release'),
+}
+
+// SaaS Tenant Account API
+export const tenantAccountApi = {
+  getOverview: () => api.get('/saas/account/overview'),
+  getBilling: () => api.get('/saas/account/billing'),
+  getPlans: () => api.get('/saas/account/plans'),
+  requestPlanChange: (data) => api.post('/saas/account/plan-change', data),
+  getPlanChanges: () => api.get('/saas/account/plan-changes'),
+  getBranding: () => api.get('/saas/account/branding'),
+  updateBranding: (data) => api.put('/saas/account/branding', data),
+  uploadLogo: (formData) => api.post('/saas/account/branding/logo', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  deleteLogo: () => api.delete('/saas/account/branding/logo'),
+}
+
+// SaaS Website Content API
+export const websiteContentApi = {
+  getAll: () => api.get('/saas/website-content'),
+  bulkUpdate: (items) => api.put('/saas/admin/website/content', { items }),
+  uploadImage: (formData) => api.post('/saas/admin/website/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+}
+
+// SaaS Plan Change Requests (Super Admin)
+export const planRequestsApi = {
+  list: (status) => api.get('/saas/tenants/plan-requests', { params: { status } }),
+  approve: (id, data) => api.post(`/saas/tenants/plan-requests/${id}/approve`, data),
+  reject: (id, data) => api.post(`/saas/tenants/plan-requests/${id}/reject`, data),
 }

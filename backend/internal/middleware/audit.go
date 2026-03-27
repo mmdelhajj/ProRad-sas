@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"encoding/json"
+	"fmt"
 	"regexp"
 	"strings"
 
@@ -86,7 +87,17 @@ func logAuditEntry(user *models.User, method, path, ip, userAgent string, reques
 	var action models.AuditAction
 	switch method {
 	case "POST":
-		action = models.AuditActionCreate
+		// POST actions that are updates, not creates
+		if strings.Contains(path, "/add-balance") || strings.Contains(path, "/refill") ||
+			strings.Contains(path, "/topup-data") ||
+			strings.Contains(path, "/change-service") || strings.Contains(path, "/renew") ||
+			strings.Contains(path, "/reset-fup") || strings.Contains(path, "/reset-mac") ||
+			strings.Contains(path, "/disconnect") || strings.Contains(path, "/activate") ||
+			strings.Contains(path, "/toggle") || strings.Contains(path, "/bulk") {
+			action = models.AuditActionUpdate
+		} else {
+			action = models.AuditActionCreate
+		}
 	case "PUT", "PATCH":
 		action = models.AuditActionUpdate
 	case "DELETE":
@@ -156,6 +167,30 @@ func generateDescription(action models.AuditAction, entityType, path string, req
 	// Handle special paths (bulk actions, etc.)
 	if strings.Contains(path, "/bulk") {
 		return verb + " multiple " + entityType + "s (bulk action)"
+	}
+	if strings.Contains(path, "/add-balance") || strings.Contains(path, "/refill") {
+		var amount float64
+		if len(requestBody) > 0 {
+			var body map[string]interface{}
+			if json.Unmarshal(requestBody, &body) == nil {
+				if a, ok := body["amount"].(float64); ok {
+					amount = a
+				}
+			}
+		}
+		return fmt.Sprintf("Added $%.2f balance to %s", amount, entityName)
+	}
+	if strings.Contains(path, "/topup-data") {
+		var gb float64
+		if len(requestBody) > 0 {
+			var body map[string]interface{}
+			if json.Unmarshal(requestBody, &body) == nil {
+				if g, ok := body["gb"].(float64); ok {
+					gb = g
+				}
+			}
+		}
+		return fmt.Sprintf("Added %.0f GB data top-up to %s", gb, entityName)
 	}
 	if strings.Contains(path, "/change-service") {
 		return "Changed service for " + entityName

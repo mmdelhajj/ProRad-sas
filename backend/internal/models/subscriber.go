@@ -64,8 +64,10 @@ type Subscriber struct {
 	CDNFUPLevel            int   `gorm:"column:cdn_fup_level;default:0" json:"cdn_fup_level"`
 	CDNMonthlyFUPLevel     int   `gorm:"column:cdn_monthly_fup_level;default:0" json:"cdn_monthly_fup_level"`
 	DailyQuotaUsed   int64      `gorm:"column:daily_quota_used;default:0" json:"daily_quota_used"`
-	MonthlyQuotaUsed int64      `gorm:"column:monthly_quota_used;default:0" json:"monthly_quota_used"`
-	LastQuotaReset   *time.Time `gorm:"column:last_quota_reset" json:"last_quota_reset"`
+	MonthlyQuotaUsed  int64      `gorm:"column:monthly_quota_used;default:0" json:"monthly_quota_used"`
+	MonthlyBonusQuota int64      `gorm:"column:monthly_bonus_quota;default:0" json:"monthly_bonus_quota"` // Total bonus GB purchased this month
+	MonthlyBonusUsed  int64      `gorm:"column:monthly_bonus_used;default:0" json:"monthly_bonus_used"`  // How much of bonus consumed
+	LastQuotaReset    *time.Time `gorm:"column:last_quota_reset" json:"last_quota_reset"`
 
 	// Network
 	MACAddress      string  `gorm:"column:mac_address;size:50;index" json:"mac_address"`
@@ -226,4 +228,18 @@ func (s *Subscriber) DaysRemaining() int {
 		return 0
 	}
 	return int(time.Until(s.ExpiryDate).Hours() / 24)
+}
+
+// BonusTopUp tracks data top-up purchase history
+type BonusTopUp struct {
+	ID           uint      `gorm:"column:id;primaryKey" json:"id"`
+	SubscriberID uint      `gorm:"column:subscriber_id;not null;index" json:"subscriber_id"`
+	GB           int       `gorm:"column:gb;not null" json:"gb"`
+	Bytes        int64     `gorm:"column:bytes;not null" json:"bytes"`
+	PricePerGB   float64   `gorm:"column:price_per_gb;type:decimal(10,2)" json:"price_per_gb"`
+	TotalCost    float64   `gorm:"column:total_cost;type:decimal(10,2)" json:"total_cost"`
+	Source       string    `gorm:"column:source;size:50;not null" json:"source"` // "admin", "reseller", "customer"
+	CreatedBy    string    `gorm:"column:created_by;size:100" json:"created_by"`
+	Reason       string    `gorm:"column:reason;size:255" json:"reason"`
+	CreatedAt    time.Time `gorm:"column:created_at" json:"created_at"`
 }

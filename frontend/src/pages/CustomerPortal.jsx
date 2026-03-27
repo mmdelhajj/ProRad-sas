@@ -32,7 +32,7 @@ function formatBytes(bytes) {
 }
 
 // Circular progress ring component
-function CircularProgressRing({ value = 0, total = 0, label, size = 110, strokeWidth = 10 }) {
+function CircularProgressRing({ value = 0, total = 0, label, size = 110, strokeWidth = 10, color: customColor }) {
   const percentage = total > 0 ? Math.min((value / total) * 100, 100) : 0
   const roundedPercent = Math.round(percentage * 10) / 10
   const radius = (size - strokeWidth) / 2
@@ -41,6 +41,7 @@ function CircularProgressRing({ value = 0, total = 0, label, size = 110, strokeW
   const center = size / 2
 
   const getColor = () => {
+    if (customColor) return customColor
     if (percentage >= 95) return '#ef4444'
     if (percentage >= 80) return '#f59e0b'
     return '#10b981'
@@ -111,6 +112,12 @@ export default function CustomerPortal() {
   const [changePlanLoading, setChangePlanLoading] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState(null)
   const [allowDowngrade, setAllowDowngrade] = useState(true)
+  const [showTopUp, setShowTopUp] = useState(false)
+  const [topUpInfo, setTopUpInfo] = useState(null)
+  const [topUpGB, setTopUpGB] = useState('')
+  const [topUpLoading, setTopUpLoading] = useState(false)
+  const [showBonusHistory, setShowBonusHistory] = useState(false)
+  const [bonusHistory, setBonusHistory] = useState([])
   const [publicIPData, setPublicIPData] = useState(null)
   const [publicIPLoading, setPublicIPLoading] = useState(false)
   const [walletTransactions, setWalletTransactions] = useState([])
@@ -591,6 +598,11 @@ export default function CustomerPortal() {
                 <div className="wb-group-title flex items-center gap-1">
                   <ChartBarIcon className="w-4 h-4 text-[#4CAF50]" />
                   Monthly Usage
+                  {dashboard.monthly_bonus_quota > 0 && (
+                    <span className="text-[10px] text-purple-500 font-normal">
+                      (Bonus: {((dashboard.monthly_bonus_quota - dashboard.monthly_bonus_used) / 1073741824).toFixed(1)} GB left of {(dashboard.monthly_bonus_quota / 1073741824).toFixed(0)} GB)
+                    </span>
+                  )}
                   {dashboard.monthly_reset_date && (
                     <span className="ml-auto text-[10px] text-gray-400 dark:text-[#888] font-normal">
                       Resets {formatDate(dashboard.monthly_reset_date)}
@@ -602,14 +614,44 @@ export default function CustomerPortal() {
                     <CircularProgressRing
                       label="Download"
                       value={dashboard.monthly_download_used}
-                      total={dashboard.monthly_quota}
+                      total={(dashboard.monthly_quota || 0) + (dashboard.monthly_bonus_quota || 0)}
                     />
                     <CircularProgressRing
                       label="Upload"
                       value={dashboard.monthly_upload_used}
-                      total={dashboard.monthly_upload_quota || dashboard.monthly_quota}
+                      total={(dashboard.monthly_upload_quota || dashboard.monthly_quota || 0) + (dashboard.monthly_bonus_quota || 0)}
                     />
+                    {dashboard.monthly_bonus_quota > 0 && (
+                      <CircularProgressRing
+                        label="Bonus"
+                        value={dashboard.monthly_bonus_used || 0}
+                        total={dashboard.monthly_bonus_quota}
+                        color="#7c3aed"
+                      />
+                    )}
                   </div>
+                </div>
+                {/* Buy Extra GB button + bonus history */}
+                <div className="mt-2 px-2 pb-2 space-y-1">
+                  <button onClick={async () => {
+                    try {
+                      const r = await api.get('/customer/topup-info')
+                      if (!r.data.enabled) { alert('Data top-up is not available. Contact your provider.'); return }
+                      setTopUpInfo(r.data)
+                      setShowTopUp(true)
+                    } catch {}
+                  }} className="w-full py-1.5 text-[11px] font-medium text-white bg-green-600 hover:bg-green-700 rounded">
+                    Buy Extra GB
+                  </button>
+                  <button onClick={async () => {
+                    try {
+                      const r = await api.get('/customer/bonus-history')
+                      if (r.data.success) setBonusHistory(r.data.data || [])
+                      setShowBonusHistory(true)
+                    } catch {}
+                  }} className="w-full py-1 text-[10px] text-purple-600 dark:text-purple-400 hover:underline">
+                    View Top-Up History
+                  </button>
                 </div>
               </div>
             </div>
@@ -1387,6 +1429,94 @@ export default function CustomerPortal() {
                   })}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bonus History Modal */}
+      {showBonusHistory && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowBonusHistory(false)}>
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md mx-4 max-h-[70vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-3 border-b border-gray-200 dark:border-gray-700">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Data Top-Up History</h3>
+              <button onClick={() => setShowBonusHistory(false)} className="text-gray-500 text-xl">&times;</button>
+            </div>
+            <div className="p-3">
+              {bonusHistory.length === 0 ? (
+                <p className="text-xs text-gray-500 text-center py-4">No top-ups yet</p>
+              ) : bonusHistory.map(t => (
+                <div key={t.id} className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-700 last:border-0">
+                  <div>
+                    <p className="text-xs font-medium text-gray-900 dark:text-white">{t.gb} GB</p>
+                    <p className="text-[10px] text-gray-500">{new Date(t.created_at).toLocaleDateString()} — {t.source}{t.reason ? `: ${t.reason}` : ''}</p>
+                  </div>
+                  <div className="text-right">
+                    {t.total_cost > 0 ? (
+                      <span className="text-xs font-medium text-red-500">-${t.total_cost.toFixed(2)}</span>
+                    ) : (
+                      <span className="text-xs text-green-600">Free</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Buy Extra GB Modal */}
+      {showTopUp && topUpInfo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => { setShowTopUp(false); setTopUpGB('') }}>
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-sm mx-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Buy Extra Data</h3>
+              <button onClick={() => { setShowTopUp(false); setTopUpGB('') }} className="text-gray-500 hover:text-gray-700 text-xl">&times;</button>
+            </div>
+            <div className="p-4 space-y-3">
+              <p className="text-xs text-gray-500">Price: <strong className="text-green-600">${topUpInfo.price_per_gb.toFixed(2)}/GB</strong></p>
+              <p className="text-xs text-gray-500">Balance: <strong>${parseFloat(topUpInfo.balance || 0).toFixed(2)}</strong></p>
+              <div>
+                <label className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 block">How many GB?</label>
+                <div className="flex gap-2">
+                  {[5, 10, 20, 50, 100].map(gb => (
+                    <button key={gb} onClick={() => setTopUpGB(String(gb))}
+                      className={`px-2 py-1 text-[10px] rounded ${String(gb) === topUpGB ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'}`}>
+                      {gb} GB
+                    </button>
+                  ))}
+                </div>
+                <input type="number" min="1" value={topUpGB} onChange={e => setTopUpGB(e.target.value)} placeholder="Or enter custom GB" className="mt-2 w-full border rounded px-2 py-1 text-xs dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+              </div>
+              {topUpGB && parseInt(topUpGB) > 0 && (
+                <div className="p-2 rounded bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-xs">
+                  <p><strong>{topUpGB} GB</strong> × ${topUpInfo.price_per_gb.toFixed(2)} = <strong className="text-blue-600">${(parseInt(topUpGB) * topUpInfo.price_per_gb).toFixed(2)}</strong></p>
+                  {parseFloat(topUpInfo.balance) < parseInt(topUpGB) * topUpInfo.price_per_gb && (
+                    <p className="text-red-500 mt-1">Insufficient balance</p>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2">
+              <button onClick={() => { setShowTopUp(false); setTopUpGB('') }} className="px-3 py-1.5 text-xs bg-gray-200 dark:bg-gray-700 rounded">Cancel</button>
+              <button
+                disabled={topUpLoading || !topUpGB || parseInt(topUpGB) <= 0 || parseFloat(topUpInfo.balance) < parseInt(topUpGB) * topUpInfo.price_per_gb}
+                onClick={async () => {
+                  setTopUpLoading(true)
+                  try {
+                    const res = await api.post('/customer/topup-data', { gb: parseInt(topUpGB) })
+                    if (res.data.success) {
+                      setShowTopUp(false); setTopUpGB('')
+                      const dashRes = await api.get('/customer/dashboard')
+                      if (dashRes.data.success) setDashboard(dashRes.data.data)
+                    } else { alert(res.data.message) }
+                  } catch (err) { alert(err.response?.data?.message || 'Failed') }
+                  finally { setTopUpLoading(false) }
+                }}
+                className="px-3 py-1.5 text-xs bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
+              >
+                {topUpLoading ? 'Buying...' : 'Buy Now'}
+              </button>
             </div>
           </div>
         </div>

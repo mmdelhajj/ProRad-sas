@@ -450,7 +450,7 @@ func (s *QuotaSyncService) syncNasSubscribers(nas *models.Nas, subscribers []mod
 		// Re-read fresh subscriber data FIRST to handle race conditions with FUP reset
 		// This ensures we use the updated last_session values set during reset
 		var freshSub models.Subscriber
-		if err := database.DB.First(&freshSub, sub.ID).Error; err != nil {
+		if err := database.DB.Preload("Service").First(&freshSub, sub.ID).Error; err != nil {
 			log.Printf("QuotaSync: Failed to re-read subscriber %s: %v", sub.Username, err)
 			continue
 		}
@@ -619,6 +619,27 @@ func (s *QuotaSyncService) syncNasSubscribers(nas *models.Nas, subscribers []mod
 			updates["monthly_download_used"] = newMonthlyDownload
 			updates["monthly_upload_used"] = newMonthlyUpload
 			updates["monthly_quota_used"] = newMonthlyDownload + newMonthlyUpload
+		}
+
+		// Track bonus data usage: if subscriber has active bonus and would be in monthly FUP,
+		// count the download delta against bonus_used (bonus starts fresh, past FUP usage doesn't count)
+		if freshSub.MonthlyBonusQuota > 0 && freshSub.MonthlyBonusUsed < freshSub.MonthlyBonusQuota {
+			// Check if user WOULD be in monthly FUP without bonus
+			wouldBeFUP := false
+			if freshSub.Service != nil && freshSub.Service.MonthlyFUP1Threshold > 0 {
+				totalMonthly := newMonthlyDownload + newMonthlyUpload
+				if totalMonthly >= freshSub.Service.MonthlyFUP1Threshold {
+					wouldBeFUP = true
+				}
+			}
+			if wouldBeFUP && discountedDownload > 0 {
+				newBonusUsed := freshSub.MonthlyBonusUsed + discountedDownload + discountedUpload
+				if newBonusUsed > freshSub.MonthlyBonusQuota {
+					newBonusUsed = freshSub.MonthlyBonusQuota // Cap at max
+				}
+				updates["monthly_bonus_used"] = newBonusUsed
+				freshSub.MonthlyBonusUsed = newBonusUsed
+			}
 		}
 
 		// Always update daily (legacy field)
@@ -1163,7 +1184,7 @@ func (s *QuotaSyncService) checkAndEnforceFUP(client *mikrotik.Client, nas *mode
 		dailyFUPUpload = service.FUP1UploadSpeed
 	}
 
-	// Calculate Monthly FUP level based on monthly usage
+	// Calculate Monthly FUP level based on monthly usage (original thresholds only)
 	var monthlyFUPLevel int
 	var monthlyFUPDownload, monthlyFUPUpload int64
 
@@ -1191,6 +1212,15 @@ func (s *QuotaSyncService) checkAndEnforceFUP(client *mikrotik.Client, nas *mode
 		monthlyFUPLevel = 1
 		monthlyFUPDownload = service.MonthlyFUP1DownloadSpeed
 		monthlyFUPUpload = service.MonthlyFUP1UploadSpeed
+	}
+
+	// Bonus data top-up: if user WOULD be in monthly FUP but has unused bonus, override to no FUP
+	// Bonus counts fresh from when it was added — past FUP usage doesn't eat it
+	if monthlyFUPLevel > 0 && sub.MonthlyBonusQuota > 0 && sub.MonthlyBonusUsed < sub.MonthlyBonusQuota {
+		// User has unused bonus — restore original speed (no monthly FUP)
+		monthlyFUPLevel = 0
+		monthlyFUPDownload = 0
+		monthlyFUPUpload = 0
 	}
 
 	// Determine effective FUP: pick the SLOWER speed (more restrictive)

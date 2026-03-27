@@ -464,6 +464,9 @@ func main() {
 	customerProtected.Get("/transactions", customerHandler.Transactions)
 	customerProtected.Get("/available-services", customerHandler.AvailableServices)
 	customerProtected.Post("/change-service", customerHandler.ChangeService)
+	customerProtected.Get("/topup-info", customerHandler.GetTopUpInfo)
+	customerProtected.Post("/topup-data", customerHandler.TopUpData)
+	customerProtected.Get("/bonus-history", customerHandler.GetBonusHistory)
 	customerProtected.Get("/active-banners", notificationBannerHandler.GetActiveForCustomer)
 	// Customer public IP routes
 	customerProtected.Get("/public-ip", publicIPHandler.GetCustomerPublicIP)
@@ -560,6 +563,7 @@ func main() {
 	subscribers.Post("/:id/deactivate", middleware.RequirePermission("subscribers.inactivate"), subscriberHandler.Deactivate)
 	subscribers.Post("/:id/refill", middleware.RequirePermission("subscribers.refill_quota"), subscriberHandler.Refill)
 	subscribers.Post("/:id/add-balance", middleware.RequirePermission("subscribers.refill_quota"), subscriberHandler.AddBalance)
+	subscribers.Post("/:id/topup-data", middleware.RequirePermission("subscribers.refill_quota"), subscriberHandler.TopUpData)
 	subscribers.Post("/:id/ping", middleware.RequirePermission("subscribers.ping"), subscriberHandler.Ping)
 	subscribers.Post("/:id/port-check", middleware.RequirePermission("subscribers.port_check"), subscriberHandler.PortCheck)
 	subscribers.Get("/:id/password", middleware.RequirePermission("subscribers.view"), subscriberHandler.GetPassword)

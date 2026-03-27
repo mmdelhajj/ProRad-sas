@@ -1702,7 +1702,14 @@ export default function SubscriberEdit() {
         <div className="space-y-3">
           {/* Monthly Summary */}
           <div className="card p-3">
-            <h3 className="text-[12px] font-semibold text-gray-900 dark:text-white mb-2 pb-1 border-b border-[#ccc] dark:border-[#555]">Monthly</h3>
+            <h3 className="text-[12px] font-semibold text-gray-900 dark:text-white mb-2 pb-1 border-b border-[#ccc] dark:border-[#555]">
+              Monthly
+              {subscriber?.monthly_bonus_quota > 0 && (
+                <span className="ml-2 text-[10px] font-normal text-purple-600 dark:text-purple-400" title="Bonus data from top-up">
+                  (+{(subscriber.monthly_bonus_quota / 1073741824).toFixed(0)} GB bonus)
+                </span>
+              )}
+            </h3>
             <div className="flex items-end gap-4 h-48">
               {/* Download Bar */}
               <div className="flex flex-col items-center flex-1">

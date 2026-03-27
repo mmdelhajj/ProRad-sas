@@ -3480,7 +3480,7 @@ func (h *SubscriberHandler) AddDays(c *fiber.Ctx) error {
 		EntityID:    subscriber.ID,
 		EntityName:  subscriber.Username,
 		OldValue:    oldExpiry.Format("2006-01-02"),
-		NewValue:    newExpiry.Format("2006-01-02"),
+		NewValue:    fmt.Sprintf(`{"expiry": "%s"}`, newExpiry.Format("2006-01-02")),
 		Description: fmt.Sprintf("%s %d days. Reason: %s", action, abs(req.Days), req.Reason),
 		IPAddress:   c.IP(),
 		UserAgent:   c.Get("User-Agent"),
@@ -3901,8 +3901,8 @@ func (h *SubscriberHandler) ChangeService(c *fiber.Ctx) error {
 		EntityType:  "subscriber",
 		EntityID:    subscriber.ID,
 		EntityName:  subscriber.Username,
-		OldValue:    fmt.Sprintf("ServiceID: %d", oldServiceID),
-		NewValue:    fmt.Sprintf("ServiceID: %d, Charge: %.2f", req.ServiceID, chargeAmount),
+		OldValue:    fmt.Sprintf(`{"service_id": %d}`, oldServiceID),
+		NewValue:    fmt.Sprintf(`{"service_id": %d, "charge": %.2f}`, req.ServiceID, chargeAmount),
 		Description: fmt.Sprintf("Changed service from %s to %s. %s. Reason: %s", oldService.Name, newService.Name, priceDescription, req.Reason),
 		IPAddress:   c.IP(),
 		UserAgent:   c.Get("User-Agent"),
@@ -3991,8 +3991,8 @@ func (h *SubscriberHandler) Activate(c *fiber.Ctx) error {
 		EntityType:  "subscriber",
 		EntityID:    subscriber.ID,
 		EntityName:  subscriber.Username,
-		OldValue:    fmt.Sprintf("Status: %d", oldStatus),
-		NewValue:    fmt.Sprintf("Status: %d", models.SubscriberStatusActive),
+		OldValue:    fmt.Sprintf(`{"status": %d}`, oldStatus),
+		NewValue:    fmt.Sprintf(`{"status": %d}`, models.SubscriberStatusActive),
 		Description: "Activated subscriber",
 		IPAddress:   c.IP(),
 		UserAgent:   c.Get("User-Agent"),
@@ -4060,8 +4060,8 @@ func (h *SubscriberHandler) Deactivate(c *fiber.Ctx) error {
 		EntityType:  "subscriber",
 		EntityID:    subscriber.ID,
 		EntityName:  subscriber.Username,
-		OldValue:    fmt.Sprintf("Status: %d", oldStatus),
-		NewValue:    fmt.Sprintf("Status: %d", models.SubscriberStatusInactive),
+		OldValue:    fmt.Sprintf(`{"status": %d}`, oldStatus),
+		NewValue:    fmt.Sprintf(`{"status": %d}`, models.SubscriberStatusInactive),
 		Description: "Deactivated subscriber",
 		IPAddress:   c.IP(),
 		UserAgent:   c.Get("User-Agent"),
@@ -4161,12 +4161,16 @@ func (h *SubscriberHandler) AddBalance(c *fiber.Ctx) error {
 		EntityType:  "subscriber",
 		EntityID:    subscriber.ID,
 		EntityName:  subscriber.Username,
-		NewValue:    fmt.Sprintf("Balance: %.2f → %.2f", balanceBefore, balanceBefore+req.Amount),
+		NewValue:    fmt.Sprintf(`{"balance_before": %.2f, "balance_after": %.2f, "amount": %.2f}`, balanceBefore, balanceBefore+req.Amount, req.Amount),
 		Description: fmt.Sprintf("Added $%.2f to wallet. Reason: %s", req.Amount, req.Reason),
 		IPAddress:   c.IP(),
 		UserAgent:   c.Get("User-Agent"),
 	}
-	database.DB.Create(&auditLog)
+	if err := database.DB.Create(&auditLog).Error; err != nil {
+		log.Printf("ERROR: Failed to create audit log for AddBalance: %v", err)
+	} else {
+		log.Printf("INFO: Audit log created for AddBalance: user=%s, subscriber=%s, amount=%.2f", user.Username, subscriber.Username, req.Amount)
+	}
 
 	return c.JSON(fiber.Map{
 		"success": true,
@@ -4182,6 +4186,63 @@ func (h *SubscriberHandler) AddBalance(c *fiber.Ctx) error {
 // Refill is an alias for AddBalance (backward compatibility)
 func (h *SubscriberHandler) Refill(c *fiber.Ctx) error {
 	return h.AddBalance(c)
+}
+
+// TopUpData adds extra GB to subscriber's monthly quota (admin/reseller action)
+func (h *SubscriberHandler) TopUpData(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"success": false, "message": "Invalid subscriber ID"})
+	}
+
+	var req struct {
+		GB     int    `json:"gb"`
+		Reason string `json:"reason"`
+	}
+	if err := c.BodyParser(&req); err != nil || req.GB <= 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"success": false, "message": "GB amount must be positive"})
+	}
+
+	var subscriber models.Subscriber
+	if err := database.DB.First(&subscriber, id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"success": false, "message": "Subscriber not found"})
+	}
+
+	user := middleware.GetCurrentUser(c)
+	bonusBytes := int64(req.GB) * 1024 * 1024 * 1024
+
+	// Add bonus and reset bonus_used so the new GB starts fresh
+	database.DB.Model(&models.Subscriber{}).Where("id = ?", subscriber.ID).Updates(map[string]interface{}{
+		"monthly_bonus_quota": gorm.Expr("monthly_bonus_quota + ?", bonusBytes),
+		"monthly_bonus_used":  0, // Reset usage counter — new bonus starts fresh
+		"monthly_fup_level":   0,
+	})
+
+	// Record in bonus_topups history
+	source := "admin"
+	createdBy := "admin"
+	if user != nil {
+		createdBy = user.Username
+		if user.UserType == models.UserTypeReseller {
+			source = "reseller"
+		}
+	}
+	database.DB.Create(&models.BonusTopUp{
+		SubscriberID: subscriber.ID,
+		GB:           req.GB,
+		Bytes:        bonusBytes,
+		Source:       source,
+		CreatedBy:    createdBy,
+		Reason:       req.Reason,
+	})
+
+	log.Printf("TopUpData: Added %d GB to %s by %s. Reason: %s", req.GB, subscriber.Username, createdBy, req.Reason)
+
+	return c.JSON(fiber.Map{
+		"success":  true,
+		"message":  fmt.Sprintf("Added %d GB to %s. Speed will restore within 30 seconds.", req.GB, subscriber.Username),
+		"gb_added": req.GB,
+	})
 }
 
 // Ping pings subscriber's IP address via MikroTik router
