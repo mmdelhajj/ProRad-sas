@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -945,5 +946,233 @@ func (h *CustomerPortalHandler) Transactions(c *fiber.Ctx) error {
 		"total":   total,
 		"page":    page,
 		"limit":   limit,
+	})
+}
+
+// AvailableServices returns services available for the customer to switch to
+func (h *CustomerPortalHandler) AvailableServices(c *fiber.Ctx) error {
+	username := c.Locals("customer_username").(string)
+
+	var subscriber models.Subscriber
+	if err := database.DB.Preload("Service").Where("username = ?", username).First(&subscriber).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"success": false, "message": "Subscriber not found"})
+	}
+
+	// Get all active services (optionally filtered by reseller's allowed services)
+	var services []models.Service
+	query := database.DB.Where("is_active = ? AND deleted_at IS NULL", true).Order("price ASC")
+
+	// If subscriber belongs to a reseller, filter to reseller's allowed services
+	if subscriber.ResellerID > 0 {
+		var allowedIDs []uint
+		database.DB.Model(&models.ResellerService{}).Where("reseller_id = ?", subscriber.ResellerID).Pluck("service_id", &allowedIDs)
+		if len(allowedIDs) > 0 {
+			query = query.Where("id IN ?", allowedIDs)
+		}
+	}
+
+	query.Find(&services)
+
+	type ServiceOption struct {
+		ID             uint    `json:"id"`
+		Name           string  `json:"name"`
+		DownloadSpeed  int64   `json:"download_speed"`
+		UploadSpeed    int64   `json:"upload_speed"`
+		Price          float64 `json:"price"`
+		DailyQuota     int64   `json:"daily_quota"`
+		MonthlyQuota   int64   `json:"monthly_quota"`
+		IsCurrent      bool    `json:"is_current"`
+	}
+
+	result := make([]ServiceOption, len(services))
+	for i, s := range services {
+		result[i] = ServiceOption{
+			ID:            s.ID,
+			Name:          s.Name,
+			DownloadSpeed: s.DownloadSpeed,
+			UploadSpeed:   s.UploadSpeed,
+			Price:         s.Price,
+			DailyQuota:    s.DailyQuota,
+			MonthlyQuota:  s.MonthlyQuota,
+			IsCurrent:     s.ID == subscriber.ServiceID,
+		}
+	}
+
+	return c.JSON(fiber.Map{
+		"success":                true,
+		"data":                   result,
+		"balance":                subscriber.Balance,
+		"current_service_id":     subscriber.ServiceID,
+		"change_service_enabled": getSystemPreferenceBool("customer_change_service", true),
+		"allow_downgrade":        getSystemPreferenceBool("allow_downgrade", true),
+	})
+}
+
+// ChangeService allows a customer to change their service plan if they have enough balance
+func (h *CustomerPortalHandler) ChangeService(c *fiber.Ctx) error {
+	username := c.Locals("customer_username").(string)
+
+	var req struct {
+		ServiceID uint `json:"service_id"`
+	}
+	if err := c.BodyParser(&req); err != nil || req.ServiceID == 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"success": false, "message": "Service ID is required"})
+	}
+
+	var subscriber models.Subscriber
+	if err := database.DB.Preload("Service").Where("username = ?", username).First(&subscriber).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"success": false, "message": "Subscriber not found"})
+	}
+
+	// Check if self-service plan change is enabled (check first before anything else)
+	allowSelfChange := getSystemPreferenceBool("customer_change_service", true)
+	if !allowSelfChange {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"success": false, "message": "Plan changes are disabled. Contact your provider."})
+	}
+
+	if req.ServiceID == subscriber.ServiceID {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"success": false, "message": "Already on this plan"})
+	}
+
+	var newService models.Service
+	if err := database.DB.First(&newService, req.ServiceID).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"success": false, "message": "Service not found"})
+	}
+
+	// Check upgrade/downgrade rules
+	isDowngrade := newService.Price < subscriber.Service.Price
+	isUpgrade := newService.Price > subscriber.Service.Price
+
+	if isDowngrade && !getSystemPreferenceBool("allow_downgrade", true) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"success": false, "message": "Downgrade is not allowed. Contact your provider."})
+	}
+
+	// Calculate prorated cost based on remaining days
+	now := time.Now()
+	remainingDays := 0
+	if subscriber.ExpiryDate.After(now) {
+		remainingDays = int(subscriber.ExpiryDate.Sub(now).Hours()/24) + 1 // +1 to include today
+	}
+	if remainingDays > 30 {
+		remainingDays = 30
+	}
+
+	oldDailyPrice := subscriber.Service.Price / 30.0
+	newDailyPrice := newService.Price / 30.0
+	dailyDiff := newDailyPrice - oldDailyPrice
+	proratedAmount := dailyDiff * float64(remainingDays)
+	// Round to 2 decimals
+	proratedAmount = math.Round(proratedAmount*100) / 100
+
+	chargeAmount := 0.0  // positive = deduct from balance
+	refundAmount := 0.0  // positive = add to balance
+
+	if isUpgrade {
+		chargeAmount = proratedAmount // prorated upgrade cost
+		upgradeFee := getSystemPreferenceFloat("upgrade_change_service_fee", 0)
+		if upgradeFee > 0 {
+			chargeAmount += upgradeFee
+		}
+	} else if isDowngrade {
+		refundEnabled := getSystemPreferenceBool("downgrade_refund", false)
+		if refundEnabled {
+			refundAmount = -proratedAmount // proratedAmount is negative for downgrade, so negate
+		}
+		downgradeFee := getSystemPreferenceFloat("downgrade_change_service_fee", 0)
+		if downgradeFee > 0 {
+			// Fee reduces the refund or becomes a charge
+			if refundAmount >= downgradeFee {
+				refundAmount -= downgradeFee
+			} else {
+				chargeAmount = downgradeFee - refundAmount
+				refundAmount = 0
+			}
+		}
+	}
+
+	// Check balance for upgrade
+	if chargeAmount > 0 && subscriber.Balance < chargeAmount {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"success": false,
+			"message": fmt.Sprintf("Insufficient balance. Need $%.2f more (prorated %d days). Current balance: $%.2f", chargeAmount-subscriber.Balance, remainingDays, subscriber.Balance),
+		})
+	}
+
+	// Calculate new balance
+	newBalance := subscriber.Balance - chargeAmount + refundAmount
+	newBalance = math.Round(newBalance*100) / 100
+
+	// Apply change
+	oldServiceName := subscriber.Service.Name
+	updateFields := map[string]interface{}{
+		"service_id": req.ServiceID,
+		"price":      newService.Price,
+		"balance":    newBalance,
+	}
+
+	if err := database.DB.Model(&models.Subscriber{}).Where("id = ?", subscriber.ID).Updates(updateFields).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"success": false, "message": "Failed to change service"})
+	}
+
+	// Update RADIUS attributes (speed limits)
+	database.DB.Where("username = ? AND attribute = ?", username, "Mikrotik-Rate-Limit").Delete(&models.RadReply{})
+	rateLimit := fmt.Sprintf("%dk/%dk", newService.UploadSpeed, newService.DownloadSpeed)
+	database.DB.Create(&models.RadReply{
+		Username:  username,
+		Attribute: "Mikrotik-Rate-Limit",
+		Op:        ":=",
+		Value:     rateLimit,
+	})
+
+	// Delete old Framed-IP-Address if pool changed (let RADIUS assign new IP on reconnect)
+	if newService.PoolName != subscriber.Service.PoolName {
+		database.DB.Where("username = ? AND attribute = ?", username, "Framed-IP-Address").Delete(&models.RadReply{})
+	}
+
+	// Update Framed-Pool if service has pool
+	if newService.PoolName != "" {
+		database.DB.Where("username = ? AND attribute = ?", username, "Framed-Pool").Delete(&models.RadReply{})
+		database.DB.Create(&models.RadReply{
+			Username:  username,
+			Attribute: "Framed-Pool",
+			Op:        ":=",
+			Value:     newService.PoolName,
+		})
+	}
+
+	// Create transaction record
+	subID := subscriber.ID
+	if chargeAmount > 0 {
+		database.DB.Create(&models.Transaction{
+			SubscriberID:   &subID,
+			Amount:         -chargeAmount,
+			BalanceBefore:  subscriber.Balance,
+			BalanceAfter:   newBalance,
+			Type:           "service_change",
+			Description:    fmt.Sprintf("Upgrade: %s → %s (prorated %d days, $%.2f)", oldServiceName, newService.Name, remainingDays, chargeAmount),
+			OldServiceName: oldServiceName,
+			NewServiceName: newService.Name,
+		})
+	}
+	if refundAmount > 0 {
+		database.DB.Create(&models.Transaction{
+			SubscriberID:   &subID,
+			Amount:         refundAmount,
+			BalanceBefore:  subscriber.Balance,
+			BalanceAfter:   newBalance,
+			Type:           "service_change",
+			Description:    fmt.Sprintf("Downgrade refund: %s → %s (prorated %d days, $%.2f)", oldServiceName, newService.Name, remainingDays, refundAmount),
+			OldServiceName: oldServiceName,
+			NewServiceName: newService.Name,
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"success":       true,
+		"message":       fmt.Sprintf("Plan changed to %s", newService.Name),
+		"new_balance":   newBalance,
+		"charged":       chargeAmount,
+		"refunded":      refundAmount,
+		"prorated_days": remainingDays,
 	})
 }

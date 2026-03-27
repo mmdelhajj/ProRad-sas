@@ -235,6 +235,7 @@ func main() {
 			"status":  "healthy",
 			"service": "proisp-api",
 			"version": version,
+			"is_saas": isSaaSMode,
 		})
 	})
 
@@ -292,13 +293,14 @@ func main() {
 	// Apply rate limiting to API routes (100 requests per minute by default)
 	api.Use(middleware.RateLimiter(100, 1*time.Minute))
 
-	// Apply tenant middleware (resolves tenant from subdomain for SaaS mode)
-	api.Use(middleware.TenantMiddleware())
+	// In SaaS mode, apply tenant middleware BEFORE all routes
+	// so that /auth/login can resolve the tenant from the hostname
+	if isSaaSMode {
+		api.Use(middleware.TenantMiddleware())
+	}
 
 	// Public routes
 	api.Post("/auth/login", authHandler.Login)
-	api.Post("/auth/forgot-password", authHandler.ForgotPassword)
-	api.Post("/auth/reset-password", authHandler.ResetPassword)
 	api.Post("/auth/impersonate-exchange", authHandler.ExchangeImpersonateToken) // Exchange temp token for session (no auth - uses one-time token)
 	api.Get("/branding", middleware.OptionalAuth(cfg), settingsHandler.GetBranding)
 	api.Get("/server-time", settingsHandler.GetServerTime) // Public - needed for timezone before auth
@@ -343,6 +345,21 @@ func main() {
 		}
 		wgManager := services.NewWireGuardManager(serverIP)
 
+		// Restore WireGuard peers and routes for existing tenants
+		go func() {
+			var tenants []models.Tenant
+			if err := database.DB.Where("wg_client_public_key != '' AND status IN ?", []string{"active", "trial"}).Find(&tenants).Error; err != nil {
+				log.Printf("SaaS: Failed to load tenants for WireGuard restore: %v", err)
+			} else {
+				for i := range tenants {
+					if err := wgManager.AddPeer(&tenants[i]); err != nil {
+						log.Printf("SaaS: Failed to restore WireGuard peer for %s: %v", tenants[i].Subdomain, err)
+					}
+				}
+				log.Printf("SaaS: Restored WireGuard peers for %d tenants", len(tenants))
+			}
+		}()
+
 		// Start tenant worker manager (per-tenant QuotaSync, etc.)
 		tenantWorkerManager := services.NewTenantWorkerManager()
 		tenantWorkerManager.Start()
@@ -369,15 +386,55 @@ func main() {
 		saas.Get("/check-subdomain/:name", onboardingHandler.CheckSubdomain)
 		saas.Post("/verify-connection/:tenant_id", onboardingHandler.VerifyConnection)
 
+		// Public plan listing (no auth required)
+		saas.Get("/plans", handlers.ListPlansPublic)
+
+		// MikroTik configuration script for SaaS tenants (authenticated)
+		api.Get("/mikrotik-config", middleware.AuthRequired(cfg), onboardingHandler.GetMikroTikConfig)
+
 		// Protected super-admin routes
 		saasAdmin := saas.Group("/tenants", middleware.AuthRequired(cfg), middleware.SuperAdminOnly())
 		saasAdmin.Post("/", superAdminHandler.CreateTenant)
 		saasAdmin.Get("/", superAdminHandler.ListTenants)
 		saasAdmin.Get("/stats", superAdminHandler.GetGlobalStats)
+		// Plan change requests (must be before /:id to avoid route conflict)
+		saasAdmin.Get("/plan-requests", superAdminHandler.ListPlanChangeRequests)
+		saasAdmin.Post("/plan-requests/:id/approve", superAdminHandler.ApprovePlanChange)
+		saasAdmin.Post("/plan-requests/:id/reject", superAdminHandler.RejectPlanChange)
 		saasAdmin.Get("/:id", superAdminHandler.GetTenant)
 		saasAdmin.Put("/:id", superAdminHandler.UpdateTenant)
 		saasAdmin.Delete("/:id", superAdminHandler.DeleteTenant)
+		saasAdmin.Post("/:id/suspend", superAdminHandler.SuspendTenant)
 		saasAdmin.Get("/:id/script", superAdminHandler.GetTenantScript)
+		saasAdmin.Post("/:id/resend-email", superAdminHandler.ResendWelcomeEmail)
+
+		// Plan management (super admin only)
+		saasPlans := saas.Group("/admin/plans", middleware.AuthRequired(cfg), middleware.SuperAdminOnly())
+		saasPlans.Get("/", handlers.ListPlans)
+		saasPlans.Post("/", handlers.CreatePlan)
+		saasPlans.Put("/:id", handlers.UpdatePlan)
+		saasPlans.Delete("/:id", handlers.DeletePlan)
+
+		// Website CMS (public read, super admin write)
+		websiteContentHandler := handlers.NewWebsiteContentHandler()
+		saas.Get("/website-content", websiteContentHandler.GetWebsiteContent)
+		saasWebsite := saas.Group("/admin/website", middleware.AuthRequired(cfg), middleware.SuperAdminOnly())
+		saasWebsite.Put("/content", websiteContentHandler.BulkUpdateWebsiteContent)
+		saasWebsite.Post("/upload", websiteContentHandler.UploadWebsiteImage)
+
+		// Tenant self-service account
+		tenantAccountHandler := handlers.NewTenantAccountHandler()
+		tenantBrandingHandler := handlers.NewTenantBrandingHandler()
+		saasAccount := saas.Group("/account", middleware.AuthRequired(cfg), middleware.TenantRequired())
+		saasAccount.Get("/overview", tenantAccountHandler.GetAccountOverview)
+		saasAccount.Get("/billing", tenantAccountHandler.GetBillingHistory)
+		saasAccount.Get("/plans", tenantAccountHandler.GetAvailablePlans)
+		saasAccount.Post("/plan-change", tenantAccountHandler.RequestPlanChange)
+		saasAccount.Get("/plan-changes", tenantAccountHandler.GetPlanChangeRequests)
+		saasAccount.Get("/branding", tenantBrandingHandler.GetTenantBranding)
+		saasAccount.Put("/branding", tenantBrandingHandler.UpdateTenantBranding)
+		saasAccount.Post("/branding/logo", tenantBrandingHandler.UploadTenantLogo)
+		saasAccount.Delete("/branding/logo", tenantBrandingHandler.DeleteTenantLogo)
 
 		log.Printf("SaaS: Routes registered, %d active tenant workers", tenantWorkerManager.GetWorkerCount())
 	}
@@ -405,6 +462,8 @@ func main() {
 	customerProtected.Get("/invoices", customerHandler.Invoices)
 	customerProtected.Get("/invoices/:id", customerHandler.GetInvoice)
 	customerProtected.Get("/transactions", customerHandler.Transactions)
+	customerProtected.Get("/available-services", customerHandler.AvailableServices)
+	customerProtected.Post("/change-service", customerHandler.ChangeService)
 	customerProtected.Get("/active-banners", notificationBannerHandler.GetActiveForCustomer)
 	// Customer public IP routes
 	customerProtected.Get("/public-ip", publicIPHandler.GetCustomerPublicIP)
@@ -468,6 +527,9 @@ func main() {
 	protected.Get("/dashboard/system-info", dashboardHandler.SystemInfo)
 	protected.Get("/dashboard/bandwidth-heatmap", dashboardHandler.GetBandwidthHeatmap)
 	protected.Get("/dashboard/subnet-map", dashboardHandler.GetSubnetMap)
+
+	// RADIUS status for SaaS tenants (shows connection indicator on dashboard)
+	protected.Get("/radius-status", handlers.RadiusStatus)
 
 	// Subscriber routes
 	subscribers := protected.Group("/subscribers")

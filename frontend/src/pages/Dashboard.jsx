@@ -4,6 +4,7 @@ import { formatDate } from '../utils/timezone'
 import { useBrandingStore } from '../store/brandingStore'
 import { useAuthStore } from '../store/authStore'
 import { lazy, Suspense, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 const ReactECharts = lazy(() => import('echarts-for-react'))
 import {
   UsersIcon,
@@ -23,6 +24,7 @@ import {
   BookOpenIcon,
   CodeBracketIcon,
   QuestionMarkCircleIcon,
+  ArrowUpIcon,
 } from '@heroicons/react/24/outline'
 import clsx from 'clsx'
 
@@ -84,6 +86,7 @@ function StatBox({ label, value, trend, icon: Icon, iconColor }) {
 export default function Dashboard() {
   const { companyName } = useBrandingStore()
   const { isAdmin, isSaasMode } = useAuthStore()
+  const navigate = useNavigate()
   const [showConfig, setShowConfig] = useState(false)
   const [configData, setConfigData] = useState(null)
   const [configLoading, setConfigLoading] = useState(false)
@@ -310,6 +313,14 @@ export default function Dashboard() {
           >
             <CodeBracketIcon className="w-3.5 h-3.5" />
             {configLoading ? 'Loading...' : 'MikroTik Config'}
+          </button>
+          {/* Upgrade Button */}
+          <button
+            onClick={() => navigate('/account?tab=plans')}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-medium bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 hover:bg-purple-200 dark:hover:bg-purple-900/50 transition-colors"
+          >
+            <ArrowUpIcon className="w-3.5 h-3.5" />
+            Upgrade
           </button>
         </div>
       )}

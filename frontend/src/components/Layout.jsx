@@ -139,7 +139,8 @@ const allNavigation = [
   { name: 'Logs', href: '/logs', icon: DocumentTextIcon, permission: 'logs.view', saasHidden: true },
   { name: 'Backups', href: '/backups', icon: CloudArrowUpIcon, permission: 'backups.view', saasHidden: true },
   { name: 'WAN Check', href: '/wan-check', icon: SignalIcon, permission: 'settings.wan_check', resellerOnly: true },
-  { name: 'Account', href: '/account', icon: UserCircleIcon, permission: null, saasOnly: true },
+  // Account page hidden from sidebar — managed from license server admin panel
+  // { name: 'Account', href: '/account', icon: UserCircleIcon, permission: null, saasOnly: true },
   { name: 'Settings', href: '/settings', icon: CogIcon, permission: 'settings.view' },
   { name: 'Change Bulk', href: '/change-bulk', icon: QueueListIcon, permission: 'subscribers.change_bulk' },
   { name: 'Collectors', href: '/collectors', icon: BanknotesIcon, permission: 'collectors.view' },

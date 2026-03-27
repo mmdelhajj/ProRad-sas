@@ -106,6 +106,11 @@ export default function CustomerPortal() {
   const [viewLoading, setViewLoading] = useState(false)
   const [activeTab, setActiveTab] = useState('dashboard')
   const [loading, setLoading] = useState(true)
+  const [showChangePlan, setShowChangePlan] = useState(false)
+  const [availableServices, setAvailableServices] = useState([])
+  const [changePlanLoading, setChangePlanLoading] = useState(false)
+  const [selectedPlan, setSelectedPlan] = useState(null)
+  const [allowDowngrade, setAllowDowngrade] = useState(true)
   const [publicIPData, setPublicIPData] = useState(null)
   const [publicIPLoading, setPublicIPLoading] = useState(false)
   const [walletTransactions, setWalletTransactions] = useState([])
@@ -481,6 +486,7 @@ export default function CustomerPortal() {
                     <p className="text-[12px] font-bold text-gray-900 dark:text-[#e0e0e0]">{dashboard.service_name}</p>
                   </div>
                 </div>
+                <button onClick={async () => { try { const r = await api.get('/customer/available-services'); if (r.data.change_service_enabled === false) { alert('Plan changes are disabled. Contact your provider.'); return } if (r.data.success) { setAvailableServices(r.data.data || []); setAllowDowngrade(r.data.allow_downgrade !== false) } setShowChangePlan(true) } catch {} }} className="mt-1 text-[10px] text-blue-600 dark:text-blue-400 hover:underline">Change Plan</button>
               </div>
 
               {/* Speed */}
@@ -1326,6 +1332,122 @@ export default function CustomerPortal() {
           </div>
         )}
       </main>
+
+      {/* Change Plan Modal */}
+      {showChangePlan && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => { setShowChangePlan(false); setSelectedPlan(null) }}>
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Change Service Plan</h3>
+              <button onClick={() => { setShowChangePlan(false); setSelectedPlan(null) }} className="text-gray-500 hover:text-gray-700 text-xl">&times;</button>
+            </div>
+            <div className="p-4">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Balance: <span className="font-bold text-green-600">${parseFloat(dashboard?.balance || 0).toFixed(2)}</span></p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">Current: <span className="font-bold">{dashboard?.service_name}</span></p>
+
+              {availableServices.length === 0 ? (
+                <p className="text-xs text-gray-500 text-center py-4">Loading plans...</p>
+              ) : (
+                <div className="space-y-2">
+                  {availableServices.map(svc => {
+                    const priceDiff = svc.price - (dashboard?.price || 0)
+                    const isDowngrade = priceDiff < 0
+                    // Calculate prorated cost
+                    const daysLeft = dashboard?.days_left || 0
+                    const days = Math.min(Math.max(daysLeft, 0), 30)
+                    const proratedCost = Math.round(((svc.price - (dashboard?.price || 0)) / 30) * days * 100) / 100
+                    const canAfford = proratedCost <= 0 || (dashboard?.balance || 0) >= proratedCost
+                    const blocked = isDowngrade && !allowDowngrade
+                    return (
+                      <div key={svc.id} className={`flex items-center justify-between p-3 rounded-lg border ${svc.is_current ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/20' : blocked ? 'border-gray-200 dark:border-gray-700 opacity-40' : canAfford ? 'border-gray-200 dark:border-gray-600 hover:border-blue-300' : 'border-gray-200 dark:border-gray-700 opacity-60'}`}>
+                        <div>
+                          <p className="text-xs font-bold text-gray-900 dark:text-white">{svc.name}</p>
+                          <p className="text-[10px] text-gray-500">{svc.download_speed}k / {svc.upload_speed}k</p>
+                          {svc.daily_quota > 0 && <p className="text-[10px] text-gray-400">Daily: {(svc.daily_quota / 1073741824).toFixed(1)} GB</p>}
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs font-bold">${svc.price.toFixed(2)}/mo</p>
+                          {svc.is_current ? (
+                            <span className="text-[10px] text-blue-600 font-medium">Current</span>
+                          ) : blocked ? (
+                            <span className="text-[10px] text-gray-400">Downgrade disabled</span>
+                          ) : canAfford ? (
+                            <button
+                              onClick={() => setSelectedPlan(svc)}
+                              className="text-[10px] px-2 py-0.5 bg-blue-600 text-white rounded hover:bg-blue-700"
+                            >
+                              {proratedCost > 0 ? `Upgrade ($${proratedCost.toFixed(2)} for ${days}d)` : isDowngrade ? 'Downgrade' : 'Switch'}
+                            </button>
+                          ) : (
+                            <span className="text-[10px] text-red-500">Need ${proratedCost.toFixed(2)}</span>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Plan Change Modal */}
+      {selectedPlan && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50" onClick={() => setSelectedPlan(null)}>
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-sm mx-4" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Confirm Plan Change</h3>
+            </div>
+            <div className="p-4 space-y-2 text-xs">
+              {(() => {
+                const dLeft = dashboard?.days_left || 0
+                const d = Math.min(Math.max(dLeft, 0), 30)
+                const prorated = Math.round(((selectedPlan.price - (dashboard?.price || 0)) / 30) * d * 100) / 100
+                const isUp = selectedPlan.price > (dashboard?.price || 0)
+                const isDown = selectedPlan.price < (dashboard?.price || 0)
+                return <>
+                  <p>Switch to <strong>{selectedPlan.name}</strong> ({selectedPlan.download_speed}k / {selectedPlan.upload_speed}k)</p>
+                  <p>New price: <strong>${selectedPlan.price.toFixed(2)}/mo</strong></p>
+                  <p className="text-gray-500">Days remaining: <strong>{d} days</strong></p>
+                  {isUp && <p className="text-orange-600">Prorated charge: <strong>${prorated.toFixed(2)}</strong> from balance ({d} days × ${((selectedPlan.price - (dashboard?.price || 0)) / 30).toFixed(2)}/day)</p>}
+                  {isDown && allowDowngrade && <p className="text-green-600">Refund: <strong>${Math.abs(prorated).toFixed(2)}</strong> to balance ({d} days)</p>}
+                  <p className="text-gray-500">Next month: full <strong>${selectedPlan.price.toFixed(2)}</strong></p>
+                  <p className="text-gray-400 text-[10px] mt-1">Your connection will be updated immediately. You may need to reconnect.</p>
+                </>
+              })()}
+            </div>
+            <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2">
+              <button onClick={() => setSelectedPlan(null)} className="px-3 py-1.5 text-xs bg-gray-200 dark:bg-gray-700 rounded hover:bg-gray-300">Cancel</button>
+              <button
+                disabled={changePlanLoading}
+                onClick={async () => {
+                  setChangePlanLoading(true)
+                  try {
+                    const res = await api.post('/customer/change-service', { service_id: selectedPlan.id })
+                    if (res.data.success) {
+                      setSelectedPlan(null)
+                      setShowChangePlan(false)
+                      // Refresh dashboard
+                      const dashRes = await api.get('/customer/dashboard')
+                      if (dashRes.data.success) setDashboard(dashRes.data.data)
+                    } else {
+                      alert(res.data.message || 'Failed')
+                    }
+                  } catch (err) {
+                    alert(err.response?.data?.message || 'Failed to change plan')
+                  } finally {
+                    setChangePlanLoading(false)
+                  }
+                }}
+                className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                {changePlanLoading ? 'Changing...' : 'Confirm Change'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

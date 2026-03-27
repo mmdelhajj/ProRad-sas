@@ -873,6 +873,7 @@ export default function Settings() {
       { key: 'invoice_due_days', label: 'Invoice Due Days', type: 'number', placeholder: '7' },
     ],
     service_change: [
+      { key: 'customer_change_service', label: 'Allow Customer Self-Service Plan Change', type: 'toggle', description: 'Subscribers can change their own plan from the customer portal (requires balance for upgrades)' },
       { key: 'upgrade_change_service_fee', label: 'Upgrade Fee ($)', type: 'number', placeholder: '0', description: 'Fee charged when subscriber upgrades to a higher-priced service' },
       { key: 'downgrade_change_service_fee', label: 'Downgrade Fee ($)', type: 'number', placeholder: '0', description: 'Fee charged when subscriber downgrades to a lower-priced service' },
       { key: 'allow_downgrade', label: 'Allow Downgrade', type: 'toggle', description: 'Allow subscribers to change to a lower-priced service' },
