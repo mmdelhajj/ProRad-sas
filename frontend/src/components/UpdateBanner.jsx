@@ -8,14 +8,16 @@ export default function UpdateBanner() {
   const [showModal, setShowModal] = useState(false)
   const [updating, setUpdating] = useState(false)
   const queryClient = useQueryClient()
+  const isSaaS = window.location.hostname.endsWith('.saas.proxrad.com') || window.location.hostname === 'saas.proxrad.com'
 
-  // Check for updates
+  // Check for updates (skip in SaaS mode — updates managed by platform)
   const { data: updateData } = useQuery({
     queryKey: ['update-check'],
     queryFn: () => api.get('/system/update/check').then(res => res.data),
     staleTime: 30 * 60 * 1000,
     refetchInterval: 30 * 60 * 1000,
     retry: false,
+    enabled: !isSaaS,
   })
 
   // Get update status (poll when updating)

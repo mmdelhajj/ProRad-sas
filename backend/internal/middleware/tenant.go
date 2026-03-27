@@ -132,6 +132,20 @@ func GetTenantDBFromCtx(c *fiber.Ctx) *gorm.DB {
 	return database.DB
 }
 
+// TenantRequired ensures the request has a valid tenant context
+func TenantRequired() fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		tenantID, _ := c.Locals("tenant_id").(uint)
+		if tenantID == 0 {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"success": false,
+				"message": "Tenant context required",
+			})
+		}
+		return c.Next()
+	}
+}
+
 // SuperAdminOnly restricts access to super-admin users only
 func SuperAdminOnly() fiber.Handler {
 	return func(c *fiber.Ctx) error {

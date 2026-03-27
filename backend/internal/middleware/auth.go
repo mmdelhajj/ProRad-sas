@@ -160,9 +160,18 @@ func AuthRequired(cfg *config.Config) fiber.Handler {
 			return c.Next()
 		}
 
+		// Use tenant-scoped DB if JWT has tenant claims (SaaS mode)
+		db := database.DB
+		if claims.TenantSchema != "" {
+			db = database.GetTenantDB(claims.TenantSchema)
+			c.Locals("tenant_id", claims.TenantID)
+			c.Locals("tenant_schema", claims.TenantSchema)
+			c.Locals("tenant_db", db)
+		}
+
 		// Check if user still exists and is active
 		var user models.User
-		if err := database.DB.First(&user, claims.UserID).Error; err != nil {
+		if err := db.First(&user, claims.UserID).Error; err != nil {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 				"success": false,
 				"message": "User not found",
@@ -179,7 +188,7 @@ func AuthRequired(cfg *config.Config) fiber.Handler {
 		// Check if reseller account is active
 		if user.UserType == models.UserTypeReseller && user.ResellerID != nil {
 			var reseller models.Reseller
-			if err := database.DB.First(&reseller, *user.ResellerID).Error; err == nil {
+			if err := db.First(&reseller, *user.ResellerID).Error; err == nil {
 				if !reseller.IsActive {
 					return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 						"success": false,

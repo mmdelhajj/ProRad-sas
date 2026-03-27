@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate, useSearchParams, Navigate, Link } from 'react-router-dom'
+import { useNavigate, useSearchParams, Navigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { useBrandingStore } from '../store/brandingStore'
 import toast from 'react-hot-toast'
@@ -229,12 +229,6 @@ const winStyles = {
 }
 
 export default function Login() {
-  // On the base SaaS domain (saas.proxrad.com), redirect to super-admin page
-  const host = window.location.hostname
-  if (host === 'saas.proxrad.com') {
-    return <Navigate to="/signup" replace />
-  }
-
   const saved = JSON.parse(localStorage.getItem('rememberMe') || '{}')
   const [username, setUsername] = useState(saved.username || '')
   const [password, setPassword] = useState(saved.password || '')
@@ -280,7 +274,8 @@ export default function Login() {
       } else if (result.userType === 'customer') {
         navigate('/portal')
       } else {
-        navigate('/')
+        // Full reload ensures all queries start with token already in axios defaults
+        window.location.href = '/'
       }
     } else if (result.requires_2fa) {
       setRequires2FA(true)
@@ -403,23 +398,18 @@ export default function Login() {
                 </div>
               </div>
 
-              {/* Remember Me + Forgot Password */}
-              <div style={{ marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <input
-                    type="checkbox"
-                    id="rememberMe"
-                    checked={rememberMe}
-                    onChange={(e) => setRememberMe(e.target.checked)}
-                    style={{ width: 16, height: 16, cursor: 'pointer', accentColor: primaryColor || '#4a7ab5' }}
-                  />
-                  <label htmlFor="rememberMe" style={{ fontSize: 13, color: '#555', cursor: 'pointer', userSelect: 'none' }}>
-                    Remember me
-                  </label>
-                </div>
-                <Link to="/forgot-password" style={{ fontSize: 13, color: primaryColor || '#4a7ab5', textDecoration: 'none' }}>
-                  Forgot Password?
-                </Link>
+              {/* Remember Me */}
+              <div style={{ marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  type="checkbox"
+                  id="rememberMe"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  style={{ width: 16, height: 16, cursor: 'pointer', accentColor: primaryColor || '#4a7ab5' }}
+                />
+                <label htmlFor="rememberMe" style={{ fontSize: 13, color: '#555', cursor: 'pointer', userSelect: 'none' }}>
+                  Remember me
+                </label>
               </div>
 
               {/* Sign In button */}
@@ -672,23 +662,18 @@ export default function Login() {
                       </div>
                     </div>
 
-                    {/* Remember Me + Forgot Password */}
-                    <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <input
-                          type="checkbox"
-                          id="rememberMe-desktop"
-                          checked={rememberMe}
-                          onChange={(e) => setRememberMe(e.target.checked)}
-                          style={{ width: 14, height: 14, cursor: 'pointer', accentColor: '#4a7ab5' }}
-                        />
-                        <label htmlFor="rememberMe-desktop" style={{ fontSize: 11, color: '#555', cursor: 'pointer', userSelect: 'none' }}>
-                          Remember me
-                        </label>
-                      </div>
-                      <Link to="/forgot-password" style={{ fontSize: 11, color: '#4a7ab5', textDecoration: 'none' }}>
-                        Forgot Password?
-                      </Link>
+                    {/* Remember Me */}
+                    <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <input
+                        type="checkbox"
+                        id="rememberMe-desktop"
+                        checked={rememberMe}
+                        onChange={(e) => setRememberMe(e.target.checked)}
+                        style={{ width: 14, height: 14, cursor: 'pointer', accentColor: '#4a7ab5' }}
+                      />
+                      <label htmlFor="rememberMe-desktop" style={{ fontSize: 11, color: '#555', cursor: 'pointer', userSelect: 'none' }}>
+                        Remember me
+                      </label>
                     </div>
 
                     <div style={winStyles.separator} />

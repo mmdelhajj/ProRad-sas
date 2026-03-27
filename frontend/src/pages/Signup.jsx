@@ -52,22 +52,33 @@ function LandingView({ onGetStarted }) {
     {
       Icon: ServerIcon,
       title: 'ISP Management',
-      desc: 'Complete subscriber management, billing, invoicing, and service plans in one platform.',
+      desc: 'Complete subscriber lifecycle — create, renew, suspend. PPPoE auth, MAC binding, IP management.',
     },
     {
       Icon: WifiIcon,
-      title: 'MikroTik Integration',
-      desc: 'Auto-connect your MikroTik router via VPN. RADIUS, queues, and CoA work out of the box.',
+      title: 'MikroTik & RADIUS',
+      desc: 'Native MikroTik integration. FreeRADIUS with MS-CHAPv2. CoA for instant speed changes.',
     },
     {
       Icon: ChartBarIcon,
       title: 'Real-time Analytics',
-      desc: 'Live bandwidth graphs, usage reports, FUP enforcement, and sharing detection.',
+      desc: 'Live bandwidth via Torch, FUP enforcement, CDN management, usage reports and graphs.',
+    },
+    {
+      Icon: ShieldCheckIcon,
+      title: 'Billing & Resellers',
+      desc: 'Automated invoicing, prepaid cards, multi-tier reseller hierarchy with balance management.',
     },
   ]
 
+  const stats = [
+    { value: '30,000+', label: 'Subscribers Managed' },
+    { value: '99.9%', label: 'Uptime' },
+    { value: '50+', label: 'ISPs Trust Us' },
+  ]
+
   return (
-    <div style={{ minHeight: '100vh', background: `linear-gradient(135deg, ${COLORS.bg} 0%, #1a1a2e 50%, ${COLORS.primaryDark} 100%)` }}>
+    <div style={{ minHeight: '100vh', background: COLORS.bg }}>
       {/* Nav */}
       <nav style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 32px', maxWidth: 1200, margin: '0 auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -75,59 +86,150 @@ function LandingView({ onGetStarted }) {
             <WifiIcon style={{ width: 20, height: 20, color: '#fff' }} />
           </div>
           <span style={{ color: '#fff', fontWeight: 700, fontSize: 20 }}>ProxRad</span>
+          <span style={{ color: COLORS.primaryLight, fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 4, background: 'rgba(79,70,229,0.2)', marginLeft: -4 }}>Cloud</span>
         </div>
         <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-          <Link to="/login" style={{ color: COLORS.textMuted, textDecoration: 'none', fontSize: 14 }}>Login</Link>
-          <Link to="/super-admin" style={{ color: COLORS.textMuted, textDecoration: 'none', fontSize: 12, opacity: 0.6 }}>Super Admin</Link>
+          <Link to="/login" style={{ color: COLORS.textMuted, textDecoration: 'none', fontSize: 14, fontWeight: 500, padding: '8px 16px', borderRadius: 8, border: `1px solid ${COLORS.border}`, transition: 'all 0.2s' }}>Login</Link>
+          <button
+            onClick={onGetStarted}
+            style={{
+              padding: '8px 20px', fontSize: 14, fontWeight: 600, color: '#fff',
+              background: COLORS.primary, border: 'none', borderRadius: 8, cursor: 'pointer',
+            }}
+          >
+            Start Free Trial
+          </button>
         </div>
       </nav>
 
       {/* Hero */}
       <div style={{ textAlign: 'center', padding: '80px 24px 40px', maxWidth: 800, margin: '0 auto' }}>
         <div style={{ display: 'inline-block', padding: '6px 16px', borderRadius: 20, background: 'rgba(79,70,229,0.2)', border: '1px solid rgba(79,70,229,0.4)', color: COLORS.primaryLight, fontSize: 13, fontWeight: 500, marginBottom: 24 }}>
-          14-day free trial &middot; No credit card required
+          The Complete ISP Management Platform
         </div>
         <h1 style={{ color: '#fff', fontSize: 'clamp(32px, 5vw, 56px)', fontWeight: 800, lineHeight: 1.1, margin: '0 0 20px' }}>
-          Launch Your ISP<br />in Minutes
+          Manage Your ISP<br />
+          <span style={{ background: 'linear-gradient(135deg, #818cf8, #06b6d4)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+            From One Dashboard
+          </span>
         </h1>
-        <p style={{ color: COLORS.textMuted, fontSize: 18, lineHeight: 1.6, maxWidth: 560, margin: '0 auto 40px' }}>
-          Complete ISP management platform. Connect your MikroTik, start billing subscribers. Everything automated.
+        <p style={{ color: COLORS.textMuted, fontSize: 18, lineHeight: 1.6, maxWidth: 580, margin: '0 auto 40px' }}>
+          Subscribers, billing, bandwidth monitoring, MikroTik integration — all automated. Start your free trial in 60 seconds.
         </p>
-        <button
-          onClick={onGetStarted}
-          style={{
-            padding: '16px 40px', fontSize: 17, fontWeight: 600, color: '#fff',
-            background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.primaryDark})`,
-            border: 'none', borderRadius: 12, cursor: 'pointer',
-            display: 'inline-flex', alignItems: 'center', gap: 10,
-            boxShadow: '0 4px 24px rgba(79,70,229,0.4)',
-            transition: 'transform 0.2s, box-shadow 0.2s',
-          }}
-          onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 32px rgba(79,70,229,0.5)' }}
-          onMouseOut={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 24px rgba(79,70,229,0.4)' }}
-        >
-          Get Started Free
-          <ArrowRightIcon style={{ width: 20, height: 20 }} />
-        </button>
+        <div style={{ display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
+          <button
+            onClick={onGetStarted}
+            style={{
+              padding: '16px 40px', fontSize: 17, fontWeight: 600, color: '#fff',
+              background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.primaryDark})`,
+              border: 'none', borderRadius: 12, cursor: 'pointer',
+              display: 'inline-flex', alignItems: 'center', gap: 10,
+              boxShadow: '0 4px 24px rgba(79,70,229,0.4)',
+              transition: 'transform 0.2s, box-shadow 0.2s',
+            }}
+            onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 32px rgba(79,70,229,0.5)' }}
+            onMouseOut={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 24px rgba(79,70,229,0.4)' }}
+          >
+            Start Free Trial
+            <ArrowRightIcon style={{ width: 20, height: 20 }} />
+          </button>
+          <Link
+            to="/login"
+            style={{
+              padding: '16px 32px', fontSize: 17, fontWeight: 600, color: COLORS.textMuted,
+              background: 'transparent', border: `1px solid ${COLORS.border}`, borderRadius: 12,
+              textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 8,
+              transition: 'all 0.2s',
+            }}
+          >
+            Login to Dashboard
+          </Link>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 48, padding: '32px 24px', flexWrap: 'wrap' }}>
+        {stats.map(({ value, label }) => (
+          <div key={label} style={{ textAlign: 'center' }}>
+            <div style={{ color: '#fff', fontSize: 28, fontWeight: 800 }}>{value}</div>
+            <div style={{ color: COLORS.textMuted, fontSize: 13, marginTop: 4 }}>{label}</div>
+          </div>
+        ))}
       </div>
 
       {/* Features */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 24, maxWidth: 1000, margin: '0 auto', padding: '40px 24px 80px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 20, maxWidth: 1100, margin: '0 auto', padding: '48px 24px 80px' }}>
         {features.map(({ Icon, title, desc }, i) => (
           <div key={i} style={{
-            background: 'rgba(30,41,59,0.6)', border: '1px solid rgba(71,85,105,0.4)', borderRadius: 16,
-            padding: '32px 24px', backdropFilter: 'blur(8px)',
-          }}>
+            background: 'rgba(30,41,59,0.6)', border: '1px solid rgba(71,85,105,0.3)', borderRadius: 16,
+            padding: '28px 24px', backdropFilter: 'blur(8px)', transition: 'transform 0.2s, border-color 0.2s',
+          }}
+            onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.borderColor = 'rgba(79,70,229,0.4)' }}
+            onMouseOut={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.borderColor = 'rgba(71,85,105,0.3)' }}
+          >
             <div style={{
-              width: 48, height: 48, borderRadius: 12, marginBottom: 16,
-              background: `rgba(79,70,229,0.15)`, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 44, height: 44, borderRadius: 10, marginBottom: 14,
+              background: 'rgba(79,70,229,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
-              <Icon style={{ width: 24, height: 24, color: COLORS.primaryLight }} />
+              <Icon style={{ width: 22, height: 22, color: COLORS.primaryLight }} />
             </div>
-            <h3 style={{ color: '#fff', fontSize: 18, fontWeight: 600, margin: '0 0 8px' }}>{title}</h3>
+            <h3 style={{ color: '#fff', fontSize: 17, fontWeight: 600, margin: '0 0 8px' }}>{title}</h3>
             <p style={{ color: COLORS.textMuted, fontSize: 14, lineHeight: 1.6, margin: 0 }}>{desc}</p>
           </div>
         ))}
+      </div>
+
+      {/* How it works */}
+      <div style={{ background: 'rgba(30,41,59,0.3)', padding: '60px 24px', borderTop: '1px solid rgba(71,85,105,0.2)', borderBottom: '1px solid rgba(71,85,105,0.2)' }}>
+        <div style={{ textAlign: 'center', marginBottom: 40 }}>
+          <h2 style={{ color: '#fff', fontSize: 28, fontWeight: 700, margin: '0 0 8px' }}>How It Works</h2>
+          <p style={{ color: COLORS.textMuted, fontSize: 15 }}>Get started in three simple steps</p>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 32, maxWidth: 900, margin: '0 auto', flexWrap: 'wrap' }}>
+          {[
+            { step: '1', title: 'Sign Up', desc: 'Create your account in 60 seconds. Free 14-day trial, no credit card required.' },
+            { step: '2', title: 'Connect MikroTik', desc: 'Paste 3 lines of RADIUS commands into your router terminal.' },
+            { step: '3', title: 'Start Managing', desc: 'Subscribers authenticate automatically. Monitor everything from one dashboard.' },
+          ].map(({ step, title, desc }) => (
+            <div key={step} style={{ flex: '1 1 240px', textAlign: 'center', maxWidth: 280 }}>
+              <div style={{
+                width: 48, height: 48, borderRadius: '50%', margin: '0 auto 16px',
+                background: COLORS.primary, color: '#fff', fontSize: 20, fontWeight: 700,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>{step}</div>
+              <h3 style={{ color: '#fff', fontSize: 17, fontWeight: 600, margin: '0 0 8px' }}>{title}</h3>
+              <p style={{ color: COLORS.textMuted, fontSize: 14, lineHeight: 1.6, margin: 0 }}>{desc}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Bottom CTA */}
+      <div style={{ textAlign: 'center', padding: '64px 24px 80px' }}>
+        <h2 style={{ color: '#fff', fontSize: 30, fontWeight: 700, margin: '0 0 12px' }}>Ready to get started?</h2>
+        <p style={{ color: COLORS.textMuted, fontSize: 16, margin: '0 0 32px' }}>Join 50+ ISPs already using ProxRad Cloud</p>
+        <button
+          onClick={onGetStarted}
+          style={{
+            padding: '16px 48px', fontSize: 17, fontWeight: 600, color: '#fff',
+            background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.primaryDark})`,
+            border: 'none', borderRadius: 12, cursor: 'pointer',
+            boxShadow: '0 4px 24px rgba(79,70,229,0.4)',
+          }}
+        >
+          Start Free Trial
+        </button>
+        <div style={{ marginTop: 12, color: COLORS.textMuted, fontSize: 13 }}>14-day free trial &middot; No credit card required</div>
+      </div>
+
+      {/* Footer */}
+      <div style={{ borderTop: '1px solid rgba(71,85,105,0.2)', padding: '24px 32px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', maxWidth: 1200, margin: '0 auto', flexWrap: 'wrap', gap: 12 }}>
+        <span style={{ color: COLORS.textMuted, fontSize: 13 }}>&copy; 2026 ProxRad. All rights reserved.</span>
+        <div style={{ display: 'flex', gap: 20 }}>
+          <a href="https://proxrad.com" target="_blank" rel="noopener noreferrer" style={{ color: COLORS.textMuted, fontSize: 13, textDecoration: 'none' }}>Website</a>
+          <a href="https://proxrad.com/pricing.html" target="_blank" rel="noopener noreferrer" style={{ color: COLORS.textMuted, fontSize: 13, textDecoration: 'none' }}>Pricing</a>
+          <a href="mailto:support@proxrad.com" style={{ color: COLORS.textMuted, fontSize: 13, textDecoration: 'none' }}>Contact</a>
+        </div>
       </div>
     </div>
   )
@@ -372,324 +474,76 @@ function SignupForm({ onSuccess, onBack }) {
 // Setup Wizard
 // ──────────────────────────────────────
 function SetupWizard({ data }) {
-  const [wizardStep, setWizardStep] = useState(1)
   const [copied, setCopied] = useState(false)
-  const [connectionStatus, setConnectionStatus] = useState({ vpn_connected: false, mikrotik_reachable: false, radius_ready: false })
-  const [polling, setPolling] = useState(false)
-  const pollRef = useRef(null)
+  const panelUrl = data.panel_url || `https://${data.subdomain}.saas.proxrad.com`
 
-  const steps = [
-    { num: 1, label: 'Welcome' },
-    { num: 2, label: 'MikroTik' },
-    { num: 3, label: 'Verify' },
-    { num: 4, label: 'Done' },
-  ]
-
-  const copyScript = () => {
-    navigator.clipboard.writeText(data.mikrotik_script || '').then(() => {
+  const copyField = (text) => {
+    navigator.clipboard.writeText(text).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     })
   }
 
-  // Poll for connection verification
-  useEffect(() => {
-    if (wizardStep === 3 && !polling) {
-      setPolling(true)
-      const poll = async () => {
-        try {
-          const res = await axios.post(`/api/saas/verify-connection/${data.tenant_id}`)
-          if (res.data.success) {
-            const s = res.data.data
-            setConnectionStatus(s)
-            if (s.vpn_connected) {
-              setWizardStep(4)
-              return
-            }
-          }
-        } catch { /* ignore */ }
-        pollRef.current = setTimeout(poll, 5000)
-      }
-      poll()
-    }
-    return () => { if (pollRef.current) clearTimeout(pollRef.current) }
-  }, [wizardStep, data.tenant_id, polling])
-
-  // Clean up polling when leaving step 3
-  useEffect(() => {
-    if (wizardStep !== 3) {
-      setPolling(false)
-      if (pollRef.current) clearTimeout(pollRef.current)
-    }
-  }, [wizardStep])
-
-  const panelUrl = data.panel_url || `https://${data.subdomain}.saas.proxrad.com`
-
-  const StatusDot = ({ active, label }) => (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 0' }}>
-      {active ? (
-        <CheckCircleIcon style={{ width: 24, height: 24, color: COLORS.success, flexShrink: 0 }} />
-      ) : (
-        <div style={{ width: 24, height: 24, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Spinner size={20} color={COLORS.primaryLight} />
-        </div>
-      )}
-      <span style={{ color: active ? COLORS.success : COLORS.textMuted, fontSize: 15, fontWeight: active ? 600 : 400 }}>{label}</span>
+  const fieldRow = (label, value, mono) => (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'rgba(255,255,255,0.04)', borderRadius: 8, marginBottom: 8 }}>
+      <div>
+        <div style={{ color: COLORS.textMuted, fontSize: 12, fontWeight: 500, marginBottom: 2 }}>{label}</div>
+        <div style={{ color: COLORS.text, fontSize: 15, fontWeight: 600, fontFamily: mono ? 'monospace' : 'inherit', wordBreak: 'break-all' }}>{value}</div>
+      </div>
+      <button onClick={() => copyField(value)} style={{ background: 'rgba(99,102,241,0.15)', border: 'none', borderRadius: 6, padding: '6px 10px', cursor: 'pointer', color: COLORS.primaryLight, fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap' }}>
+        {copied ? 'Copied!' : 'Copy'}
+      </button>
     </div>
   )
 
   return (
     <div style={{ minHeight: '100vh', background: COLORS.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <div style={{ width: '100%', maxWidth: 600 }}>
-        {/* Progress Steps */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0, marginBottom: 40 }}>
-          {steps.map((s, i) => (
-            <div key={s.num} style={{ display: 'flex', alignItems: 'center' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-                <div style={{
-                  width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 14, fontWeight: 700,
-                  background: wizardStep > s.num ? COLORS.success : wizardStep === s.num ? COLORS.primary : COLORS.bgInput,
-                  color: '#fff',
-                  border: wizardStep === s.num ? `2px solid ${COLORS.primaryLight}` : '2px solid transparent',
-                }}>
-                  {wizardStep > s.num ? <CheckIcon style={{ width: 18, height: 18 }} /> : s.num}
-                </div>
-                <span style={{ fontSize: 11, color: wizardStep >= s.num ? COLORS.text : COLORS.textMuted, fontWeight: wizardStep === s.num ? 600 : 400 }}>
-                  {s.label}
-                </span>
-              </div>
-              {i < steps.length - 1 && (
-                <div style={{
-                  width: 60, height: 2, margin: '0 8px', marginBottom: 20,
-                  background: wizardStep > s.num ? COLORS.success : COLORS.bgInput,
-                }} />
-              )}
-            </div>
-          ))}
+      <div style={{ width: '100%', maxWidth: 480 }}>
+        {/* Success Icon */}
+        <div style={{ textAlign: 'center', marginBottom: 24 }}>
+          <div style={{
+            width: 72, height: 72, borderRadius: 18, margin: '0 auto 16px',
+            background: 'rgba(34,197,94,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <CheckCircleIcon style={{ width: 40, height: 40, color: COLORS.success }} />
+          </div>
+          <h2 style={{ color: '#fff', fontSize: 24, fontWeight: 700, margin: '0 0 6px' }}>Account Created!</h2>
+          <p style={{ color: COLORS.textMuted, fontSize: 14, margin: 0 }}>Your panel is ready. Use the details below to log in.</p>
         </div>
 
-        {/* Card */}
-        <div style={{ background: COLORS.bgCard, border: `1px solid ${COLORS.border}`, borderRadius: 16, padding: 32 }}>
-
-          {/* Step 1: Welcome */}
-          {wizardStep === 1 && (
-            <div style={{ textAlign: 'center' }}>
-              <div style={{
-                width: 64, height: 64, borderRadius: 16, margin: '0 auto 20px',
-                background: 'rgba(34,197,94,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                <CheckCircleIcon style={{ width: 36, height: 36, color: COLORS.success }} />
-              </div>
-              <h2 style={{ color: '#fff', fontSize: 24, fontWeight: 700, margin: '0 0 8px' }}>Your ISP panel is ready!</h2>
-              <p style={{ color: COLORS.textMuted, fontSize: 15, margin: '0 0 24px' }}>
-                Your panel has been created and is ready to connect.
-              </p>
-
-              <div style={{ background: COLORS.bgInput, borderRadius: 12, padding: 20, textAlign: 'left', marginBottom: 24 }}>
-                <div style={{ display: 'grid', gap: 12 }}>
-                  <div>
-                    <span style={{ color: COLORS.textMuted, fontSize: 12, textTransform: 'uppercase', letterSpacing: 1 }}>Panel URL</span>
-                    <div style={{ marginTop: 4 }}>
-                      <a href={panelUrl} target="_blank" rel="noopener noreferrer" style={{ color: COLORS.primaryLight, fontSize: 15, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 6 }}>
-                        {panelUrl} <ArrowTopRightOnSquareIcon style={{ width: 14, height: 14 }} />
-                      </a>
-                    </div>
-                  </div>
-                  <div>
-                    <span style={{ color: COLORS.textMuted, fontSize: 12, textTransform: 'uppercase', letterSpacing: 1 }}>Login Credentials</span>
-                    <div style={{ color: COLORS.text, fontSize: 14, marginTop: 4 }}>
-                      Email: <strong>{data.email}</strong>
-                    </div>
-                    <div style={{ color: COLORS.text, fontSize: 14, marginTop: 4 }}>
-                      Password: <strong>{data.password}</strong>
-                    </div>
-                  </div>
-                  <div style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)' }}>
-                    <span style={{ color: COLORS.warning, fontSize: 13 }}>14-day free trial &middot; Up to 50 subscribers</span>
-                  </div>
-                </div>
-              </div>
-
-              <button
-                onClick={() => setWizardStep(2)}
-                style={{
-                  padding: '14px 32px', fontSize: 16, fontWeight: 600, color: '#fff',
-                  background: COLORS.primary, border: 'none', borderRadius: 10, cursor: 'pointer',
-                  display: 'inline-flex', alignItems: 'center', gap: 8,
-                }}
-              >
-                Next: Connect MikroTik <ArrowRightIcon style={{ width: 18, height: 18 }} />
-              </button>
-            </div>
-          )}
-
-          {/* Step 2: MikroTik Script */}
-          {wizardStep === 2 && (
-            <div>
-              <div style={{ textAlign: 'center', marginBottom: 24 }}>
-                <div style={{
-                  width: 56, height: 56, borderRadius: 14, margin: '0 auto 16px',
-                  background: 'rgba(79,70,229,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  <CommandLineIcon style={{ width: 28, height: 28, color: COLORS.primaryLight }} />
-                </div>
-                <h2 style={{ color: '#fff', fontSize: 22, fontWeight: 700, margin: '0 0 8px' }}>Connect Your MikroTik</h2>
-                <p style={{ color: COLORS.textMuted, fontSize: 14 }}>
-                  Open your MikroTik terminal (WebFig or Winbox) and paste this script:
-                </p>
-              </div>
-
-              {/* Script Block */}
-              <div style={{ position: 'relative', marginBottom: 20 }}>
-                <pre style={{
-                  background: '#0d1117', border: '1px solid #30363d', borderRadius: 10, padding: 16,
-                  color: '#c9d1d9', fontSize: 13, lineHeight: 1.6, overflow: 'auto', maxHeight: 300,
-                  fontFamily: "'Consolas', 'Monaco', monospace', monospace",
-                  whiteSpace: 'pre-wrap', wordBreak: 'break-all', margin: 0,
-                }}>
-                  {data.mikrotik_script || '# No script generated - WireGuard setup may have failed.\n# Please contact support.'}
-                </pre>
-                <button
-                  onClick={copyScript}
-                  style={{
-                    position: 'absolute', top: 10, right: 10, padding: '6px 14px', fontSize: 13, fontWeight: 500,
-                    color: copied ? COLORS.success : '#fff', background: copied ? 'rgba(34,197,94,0.15)' : 'rgba(79,70,229,0.8)',
-                    border: 'none', borderRadius: 6, cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', gap: 6,
-                  }}
-                >
-                  {copied ? <><CheckIcon style={{ width: 14, height: 14 }} /> Copied!</> : <><ClipboardDocumentIcon style={{ width: 14, height: 14 }} /> Copy</>}
-                </button>
-              </div>
-
-              <div style={{ background: 'rgba(79,70,229,0.08)', border: '1px solid rgba(79,70,229,0.2)', borderRadius: 10, padding: 14, marginBottom: 24 }}>
-                <p style={{ color: COLORS.textMuted, fontSize: 13, margin: 0, lineHeight: 1.6 }}>
-                  <strong style={{ color: COLORS.text }}>Instructions:</strong><br />
-                  1. Open MikroTik Winbox or WebFig<br />
-                  2. Go to <strong style={{ color: COLORS.text }}>Terminal</strong><br />
-                  3. Paste the script above and press Enter<br />
-                  4. Wait for the VPN connection to establish
-                </p>
-              </div>
-
-              <div style={{ display: 'flex', gap: 12 }}>
-                <button
-                  onClick={() => setWizardStep(1)}
-                  style={{
-                    padding: '12px 20px', fontSize: 14, fontWeight: 500, color: COLORS.textMuted,
-                    background: COLORS.bgInput, border: `1px solid ${COLORS.border}`, borderRadius: 8, cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', gap: 6,
-                  }}
-                >
-                  <ArrowLeftIcon style={{ width: 16, height: 16 }} /> Back
-                </button>
-                <button
-                  onClick={() => setWizardStep(3)}
-                  style={{
-                    flex: 1, padding: '12px 20px', fontSize: 15, fontWeight: 600, color: '#fff',
-                    background: COLORS.primary, border: 'none', borderRadius: 8, cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                  }}
-                >
-                  I've pasted the script <ArrowRightIcon style={{ width: 16, height: 16 }} />
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Step 3: Verify Connection */}
-          {wizardStep === 3 && (
-            <div>
-              <div style={{ textAlign: 'center', marginBottom: 24 }}>
-                <div style={{
-                  width: 56, height: 56, borderRadius: 14, margin: '0 auto 16px',
-                  background: 'rgba(79,70,229,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  <SignalIcon style={{ width: 28, height: 28, color: COLORS.primaryLight }} />
-                </div>
-                <h2 style={{ color: '#fff', fontSize: 22, fontWeight: 700, margin: '0 0 8px' }}>Verifying Connection</h2>
-                <p style={{ color: COLORS.textMuted, fontSize: 14 }}>
-                  Checking your MikroTik VPN connection...
-                </p>
-              </div>
-
-              <div style={{ background: COLORS.bgInput, borderRadius: 12, padding: 20, marginBottom: 24 }}>
-                <StatusDot active={connectionStatus.vpn_connected} label="VPN Tunnel Connected" />
-                <div style={{ borderTop: `1px solid ${COLORS.border}` }} />
-                <StatusDot active={connectionStatus.mikrotik_reachable} label="MikroTik Router Reachable" />
-                <div style={{ borderTop: `1px solid ${COLORS.border}` }} />
-                <StatusDot active={connectionStatus.radius_ready} label="RADIUS Service Ready" />
-              </div>
-
-              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                <button
-                  onClick={() => setWizardStep(2)}
-                  style={{
-                    padding: '12px 20px', fontSize: 14, fontWeight: 500, color: COLORS.textMuted,
-                    background: COLORS.bgInput, border: `1px solid ${COLORS.border}`, borderRadius: 8, cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', gap: 6,
-                  }}
-                >
-                  <ArrowLeftIcon style={{ width: 16, height: 16 }} /> Back
-                </button>
-                <div style={{ flex: 1 }} />
-                <button
-                  onClick={() => setWizardStep(4)}
-                  style={{
-                    padding: '10px 16px', fontSize: 13, color: COLORS.textMuted,
-                    background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline',
-                  }}
-                >
-                  Skip this step
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Step 4: All Done */}
-          {wizardStep === 4 && (
-            <div style={{ textAlign: 'center' }}>
-              <div style={{
-                width: 72, height: 72, borderRadius: 18, margin: '0 auto 20px',
-                background: 'rgba(34,197,94,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                <ShieldCheckIcon style={{ width: 40, height: 40, color: COLORS.success }} />
-              </div>
-              <h2 style={{ color: '#fff', fontSize: 26, fontWeight: 700, margin: '0 0 8px' }}>You're all set!</h2>
-              <p style={{ color: COLORS.textMuted, fontSize: 15, margin: '0 0 32px', lineHeight: 1.6 }}>
-                Your ISP panel is ready. Log in with your credentials to start managing subscribers.
-              </p>
-
-              <a
-                href={panelUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 10,
-                  padding: '16px 40px', fontSize: 17, fontWeight: 600, color: '#fff',
-                  background: `linear-gradient(135deg, ${COLORS.success}, #16a34a)`,
-                  border: 'none', borderRadius: 12, cursor: 'pointer', textDecoration: 'none',
-                  boxShadow: '0 4px 20px rgba(34,197,94,0.3)',
-                }}
-              >
-                Go to My Panel <ArrowTopRightOnSquareIcon style={{ width: 18, height: 18 }} />
-              </a>
-
-              <div style={{ marginTop: 24 }}>
-                <Link to="/super-admin" style={{ color: COLORS.textMuted, fontSize: 13, textDecoration: 'none' }}>
-                  Back to Super Admin
-                </Link>
-              </div>
-            </div>
-          )}
+        {/* Credentials Card */}
+        <div style={{
+          background: COLORS.bgCard, borderRadius: 16, padding: 24,
+          border: `1px solid ${COLORS.border}`, marginBottom: 20,
+        }}>
+          {fieldRow('Panel URL', panelUrl, false)}
+          {fieldRow('Username', data.admin_username || 'admin', true)}
+          {fieldRow('Password', data.password || '', true)}
         </div>
+
+        {/* Login Button */}
+        <a
+          href={panelUrl}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+            width: '100%', padding: '16px 0', fontSize: 16, fontWeight: 600, color: '#fff',
+            background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.primaryDark})`,
+            border: 'none', borderRadius: 12, cursor: 'pointer', textDecoration: 'none',
+            boxShadow: '0 4px 20px rgba(79,70,229,0.3)',
+          }}
+        >
+          Go to Login Page <ArrowRightIcon style={{ width: 18, height: 18 }} />
+        </a>
+
+        <p style={{ textAlign: 'center', color: COLORS.textMuted, fontSize: 13, marginTop: 16 }}>
+          A confirmation email has been sent to <strong style={{ color: COLORS.text }}>{data.email}</strong>
+        </p>
+
       </div>
-
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
   )
 }
+
 
 // ──────────────────────────────────────
 // Main Signup Component

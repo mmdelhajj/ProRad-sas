@@ -139,6 +139,7 @@ const allNavigation = [
   { name: 'Logs', href: '/logs', icon: DocumentTextIcon, permission: 'logs.view', saasHidden: true },
   { name: 'Backups', href: '/backups', icon: CloudArrowUpIcon, permission: 'backups.view', saasHidden: true },
   { name: 'WAN Check', href: '/wan-check', icon: SignalIcon, permission: 'settings.wan_check', resellerOnly: true },
+  { name: 'Account', href: '/account', icon: UserCircleIcon, permission: null, saasOnly: true },
   { name: 'Settings', href: '/settings', icon: CogIcon, permission: 'settings.view' },
   { name: 'Change Bulk', href: '/change-bulk', icon: QueueListIcon, permission: 'subscribers.change_bulk' },
   { name: 'Collectors', href: '/collectors', icon: BanknotesIcon, permission: 'collectors.view' },
@@ -170,9 +171,11 @@ export default function Layout({ children }) {
   const [sessionTimeoutMin, setSessionTimeoutMin] = useState(10)
   const [maintenanceBanner, setMaintenanceBanner] = useState(null)
   const [maintenanceDismissed, setMaintenanceDismissed] = useState(false)
+  const isSaaS = window.location.hostname.endsWith('.saas.proxrad.com') || window.location.hostname === 'saas.proxrad.com'
 
-  // Fetch active maintenance windows
+  // Fetch active maintenance windows (skip in SaaS)
   useEffect(() => {
+    if (isSaaS) return
     const fetchMaintenance = () => {
       maintenanceApi.getActive().then(res => {
         const windows = res.data?.data
@@ -188,8 +191,9 @@ export default function Layout({ children }) {
     return () => clearInterval(interval)
   }, [])
 
-  // Fetch session_timeout setting
+  // Fetch session_timeout setting (skip in SaaS mode — no per-tenant settings route)
   useEffect(() => {
+    if (isSaaS) return
     api.get('/settings/session_timeout').then(res => {
       const val = parseInt(res.data?.data?.value || res.data?.value, 10)
       if (val > 0) setSessionTimeoutMin(val)
@@ -268,6 +272,8 @@ export default function Layout({ children }) {
     const filtered = allNavigation.filter((item) => {
       // Hide items in SaaS mode
       if (item.saasHidden && isSaasMode) return false
+      // Show saasOnly items only in SaaS mode
+      if (item.saasOnly && !isSaasMode) return false
       // Collector users only see collectorOnly items
       if (isCollector()) return !!item.collectorOnly
       // Non-collector users never see collectorOnly items
@@ -584,7 +590,7 @@ export default function Layout({ children }) {
             </span>
           )}
           <Clock sessionRemaining={sessionRemaining} />
-          <UpdateNotification />
+          {!isSaaS && <UpdateNotification />}
           {/* Window controls — profile & logout visible on all screens, others desktop only */}
           <div className="flex items-center gap-0.5 ml-2">
             <Link
@@ -635,10 +641,10 @@ export default function Layout({ children }) {
       </div>
 
 
-      {/* License/Update banners */}
-      <LicenseBanner />
-      <UpdateBanner />
-      <NotificationBanner />
+      {/* License/Update banners (skip in SaaS — managed by platform) */}
+      {!isSaaS && <LicenseBanner />}
+      {!isSaaS && <UpdateBanner />}
+      {!isSaaS && <NotificationBanner />}
       {/* Maintenance banner */}
       {maintenanceBanner && !maintenanceDismissed && (
         <div className="flex items-center justify-between px-3 py-1.5 bg-yellow-100 dark:bg-yellow-900/40 border-b border-yellow-300 dark:border-yellow-700 text-yellow-800 dark:text-yellow-200 text-[11px]">

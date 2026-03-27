@@ -1,9 +1,12 @@
 package handlers
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"strconv"
@@ -41,6 +44,7 @@ func (h *OnboardingHandler) Signup(c *fiber.Ctx) error {
 		Subdomain     string `json:"subdomain"`
 		AdminUsername string `json:"admin_username"`
 		Password      string `json:"password"`
+		PlanName      string `json:"plan"`
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{"success": false, "message": "Invalid request"})
@@ -90,17 +94,48 @@ func (h *OnboardingHandler) Signup(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"success": false, "message": "Internal error"})
 	}
 
+	// Look up plan if specified
+	var selectedPlan *models.Plan
+	planName := req.PlanName
+	if planName == "" {
+		planName = "free_trial"
+	}
+	var dbPlan models.Plan
+	if err := database.DB.Where("name = ? AND is_active = ?", planName, true).First(&dbPlan).Error; err == nil {
+		selectedPlan = &dbPlan
+	}
+
+	// Set defaults from plan or use fallback
+	maxSubscribers := 50
+	maxResellers := 2
+	maxRouters := 1
+	trialDays := 14
+	tenantPlan := "free"
+	var planID *uint
+
+	if selectedPlan != nil {
+		maxSubscribers = selectedPlan.MaxSubscribers
+		maxResellers = selectedPlan.MaxResellers
+		maxRouters = selectedPlan.MaxRouters
+		tenantPlan = selectedPlan.Name
+		planID = &selectedPlan.ID
+		if selectedPlan.TrialDays > 0 {
+			trialDays = selectedPlan.TrialDays
+		}
+	}
+
 	// Create tenant with trial status
-	trialEnd := time.Now().Add(14 * 24 * time.Hour) // 14-day trial
+	trialEnd := time.Now().Add(time.Duration(trialDays) * 24 * time.Hour)
 	tenant := models.Tenant{
 		Name:              req.Name,
 		Subdomain:         req.Subdomain,
 		SchemaName:        fmt.Sprintf("tenant_%s", req.Subdomain),
 		Status:            "trial",
-		Plan:              "free",
-		MaxSubscribers:    50,
-		MaxResellers:     2,
-		MaxRouters:        1,
+		Plan:              tenantPlan,
+		PlanID:            planID,
+		MaxSubscribers:    maxSubscribers,
+		MaxResellers:      maxResellers,
+		MaxRouters:        maxRouters,
 		AdminUsername:      req.AdminUsername,
 		AdminPasswordHash: string(passwordHash),
 		AdminEmail:        req.Email,
@@ -174,6 +209,23 @@ func (h *OnboardingHandler) Signup(c *fiber.Ctx) error {
 		}
 		tenantDB.Create(&nas)
 		log.Printf("SaaS: Auto-created NAS in tenant %s — IP: %s, API user: %s", tenant.SchemaName, nasIP, tenant.MikrotikAPIUser)
+
+		// Seed default branding so login page looks professional out of the box
+		brandingDefaults := map[string]string{
+			"company_name":        req.Name,
+			"primary_color":       "#2563eb",
+			"login_tagline":       "ISP Management Platform",
+			"show_login_features": "true",
+			"login_feature_1_title": "PPPoE Management",
+			"login_feature_1_desc":  "Complete subscriber and session management with real-time monitoring",
+			"login_feature_2_title": "Bandwidth Control",
+			"login_feature_2_desc":  "FUP quotas, time-based speed control, and usage monitoring",
+			"login_feature_3_title": "MikroTik Integration",
+			"login_feature_3_desc":  "Seamless RADIUS and API integration with MikroTik routers",
+		}
+		for k, v := range brandingDefaults {
+			tenantDB.Exec(`INSERT INTO system_preferences (key, value) VALUES (?, ?) ON CONFLICT (key) DO NOTHING`, k, v)
+		}
 	}
 
 	// Generate MikroTik RADIUS commands for the customer
@@ -188,28 +240,36 @@ func (h *OnboardingHandler) Signup(c *fiber.Ctx) error {
 		serverIP, saasSecret,
 	)
 
-	// Send welcome email with credentials and MikroTik commands
+	// Send welcome email with login details
 	panelURL := fmt.Sprintf("https://%s.saas.proxrad.com", tenant.Subdomain)
-	emailBody := fmt.Sprintf(`<html><body>
-<h2>Welcome to ProxPanel!</h2>
-<p>Your panel is ready:</p>
-<ul>
-  <li><b>URL:</b> <a href="%s">%s</a></li>
-  <li><b>Username:</b> %s</li>
-  <li><b>Password:</b> %s</li>
-</ul>
-<h3>MikroTik Configuration</h3>
-<p>Paste these commands in your MikroTik terminal:</p>
-<pre style="background:#f4f4f4;padding:10px;border-radius:4px;font-family:monospace">%s</pre>
-<p>After pasting, your subscribers will authenticate through ProxPanel automatically.</p>
-<p>Your dashboard will show "RADIUS Connected" once the first subscriber connects.</p>
+	emailBody := fmt.Sprintf(`<html><body style="font-family:Arial,sans-serif;color:#333;margin:0;padding:0">
+<div style="max-width:600px;margin:0 auto;padding:20px">
+  <div style="background:linear-gradient(135deg,#6366f1,#8b5cf6);padding:30px;border-radius:12px 12px 0 0;text-align:center">
+    <h1 style="color:white;margin:0;font-size:28px">Welcome to ProxPanel!</h1>
+    <p style="color:rgba(255,255,255,0.85);margin:8px 0 0">Your ISP management panel is ready</p>
+  </div>
+  <div style="background:#f9fafb;padding:24px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px">
+    <h3 style="margin:0 0 16px;color:#374151">Your Login Details</h3>
+    <table style="width:100%%;border-collapse:collapse">
+      <tr><td style="padding:8px 12px;background:#fff;border:1px solid #e5e7eb;font-weight:bold;width:120px">Panel URL</td><td style="padding:8px 12px;background:#fff;border:1px solid #e5e7eb"><a href="%s" style="color:#6366f1">%s</a></td></tr>
+      <tr><td style="padding:8px 12px;background:#fff;border:1px solid #e5e7eb;font-weight:bold">Username</td><td style="padding:8px 12px;background:#fff;border:1px solid #e5e7eb">%s</td></tr>
+      <tr><td style="padding:8px 12px;background:#fff;border:1px solid #e5e7eb;font-weight:bold">Password</td><td style="padding:8px 12px;background:#fff;border:1px solid #e5e7eb"><code style="background:#f3f4f6;padding:2px 6px;border-radius:4px">%s</code></td></tr>
+    </table>
+    <p style="margin:20px 0 0;color:#6b7280;font-size:13px">After logging in, follow the setup wizard to connect your MikroTik router.</p>
+    <hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0">
+    <p style="margin:0;color:#9ca3af;font-size:12px;text-align:center">ProxRad — ISP Management Platform &bull; <a href="https://proxrad.com" style="color:#6366f1">proxrad.com</a></p>
+  </div>
+</div>
 </body></html>`,
 		panelURL, panelURL,
 		tenant.AdminUsername, req.Password,
-		mikrotikCommands,
 	)
-	emailService := services.NewEmailService()
-	go emailService.SendEmail(tenant.AdminEmail, "Your ProxPanel Demo is Ready", emailBody, true)
+	// Send email via license server relay (SMTP ports blocked on SaaS server)
+	go func() {
+		if err := sendEmailViaRelaySync(tenant.AdminEmail, "Your ProxPanel Demo is Ready", emailBody); err != nil {
+			log.Printf("SaaS: Failed to send welcome email to %s: %v", tenant.AdminEmail, err)
+		}
+	}()
 
 	return c.Status(201).JSON(fiber.Map{
 		"success": true,
@@ -471,6 +531,41 @@ func (h *OnboardingHandler) GetMikroTikConfig(c *fiber.Ctx) error {
 		"wg_client_ip":     tenant.WGClientIP,
 		"wg_server_ip":     tenant.WGServerIP,
 	})
+}
+
+// sendEmailViaRelaySync sends email through the license server's SMTP relay (blocking, returns error)
+func sendEmailViaRelaySync(to, subject, body string) error {
+	licenseServer := os.Getenv("LICENSE_SERVER")
+	if licenseServer == "" {
+		licenseServer = "https://license.proxrad.com"
+	}
+
+	payload, _ := json.Marshal(map[string]string{
+		"to":      to,
+		"subject": subject,
+		"body":    body,
+	})
+
+	req, err := http.NewRequest("POST", licenseServer+"/api/v1/license/saas-email-relay", bytes.NewReader(payload))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SaaS-Secret", "proxrad-saas-2026")
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("relay request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("relay returned status %d", resp.StatusCode)
+	}
+
+	log.Printf("SaaS Email: sent email to %s via relay", to)
+	return nil
 }
 
 // Ensure log import is used

@@ -634,8 +634,8 @@ func (h *SuperAdminHandler) ResendWelcomeEmail(c *fiber.Ctx) error {
 		mikrotikScript,
 	)
 
-	emailService := services.NewEmailService()
-	if err := emailService.SendEmail(tenant.AdminEmail, "ProxPanel — Updated MikroTik Setup Script", emailBody, true); err != nil {
+	// Send email via license server relay (SMTP ports blocked on SaaS server)
+	if err := sendEmailViaRelaySync(tenant.AdminEmail, "ProxPanel — Updated MikroTik Setup Script", emailBody); err != nil {
 		log.Printf("SaaS: Failed to send email to %s: %v", tenant.AdminEmail, err)
 		return c.Status(500).JSON(fiber.Map{"success": false, "message": fmt.Sprintf("Failed to send email: %v", err)})
 	}
@@ -675,6 +675,103 @@ func (h *SuperAdminHandler) GetGlobalStats(c *fiber.Ctx) error {
 			"active_workers":   h.workerManager.GetWorkerCount(),
 		},
 	})
+}
+
+// ListPlanChangeRequests returns all pending plan change requests (super admin)
+func (h *SuperAdminHandler) ListPlanChangeRequests(c *fiber.Ctx) error {
+	status := c.Query("status", "pending")
+
+	var requests []models.PlanChangeRequest
+	query := database.DB.Preload("Tenant")
+	if status != "all" {
+		query = query.Where("status = ?", status)
+	}
+	query.Order("created_at DESC").Find(&requests)
+
+	return c.JSON(fiber.Map{"success": true, "data": requests})
+}
+
+// ApprovePlanChange approves a plan change request (super admin)
+func (h *SuperAdminHandler) ApprovePlanChange(c *fiber.Ctx) error {
+	id, err := c.ParamsInt("id")
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"success": false, "message": "Invalid request ID"})
+	}
+
+	var req struct {
+		AdminNotes string `json:"admin_notes"`
+	}
+	c.BodyParser(&req)
+
+	var pcr models.PlanChangeRequest
+	if err := database.DB.First(&pcr, id).Error; err != nil {
+		return c.Status(404).JSON(fiber.Map{"success": false, "message": "Request not found"})
+	}
+
+	if pcr.Status != "pending" {
+		return c.Status(400).JSON(fiber.Map{"success": false, "message": "Request already processed"})
+	}
+
+	// Get the requested plan
+	var plan models.Plan
+	if err := database.DB.Where("name = ?", pcr.RequestedPlan).First(&plan).Error; err != nil {
+		return c.Status(400).JSON(fiber.Map{"success": false, "message": "Requested plan not found"})
+	}
+
+	// Update tenant
+	database.DB.Model(&models.Tenant{}).Where("id = ?", pcr.TenantID).Updates(map[string]interface{}{
+		"plan":            plan.Name,
+		"plan_id":         plan.ID,
+		"max_subscribers": plan.MaxSubscribers,
+		"max_resellers":   plan.MaxResellers,
+		"max_routers":     plan.MaxRouters,
+	})
+
+	// Update request
+	database.DB.Model(&pcr).Updates(map[string]interface{}{
+		"status":      "approved",
+		"admin_notes": req.AdminNotes,
+	})
+
+	// Create billing event
+	database.DB.Create(&models.BillingEvent{
+		TenantID:    pcr.TenantID,
+		EventType:   "plan_change",
+		Description: fmt.Sprintf("Plan changed from %s to %s (approved)", pcr.CurrentPlan, pcr.RequestedPlan),
+		PlanName:    plan.Name,
+		Amount:      plan.PriceMonthly,
+	})
+
+	return c.JSON(fiber.Map{"success": true, "message": "Plan change approved"})
+}
+
+// RejectPlanChange rejects a plan change request (super admin)
+func (h *SuperAdminHandler) RejectPlanChange(c *fiber.Ctx) error {
+	id, err := c.ParamsInt("id")
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"success": false, "message": "Invalid request ID"})
+	}
+
+	var req struct {
+		AdminNotes string `json:"admin_notes"`
+	}
+	c.BodyParser(&req)
+
+	var pcr models.PlanChangeRequest
+	if err := database.DB.First(&pcr, id).Error; err != nil {
+		return c.Status(404).JSON(fiber.Map{"success": false, "message": "Request not found"})
+	}
+
+	if pcr.Status != "pending" {
+		return c.Status(400).JSON(fiber.Map{"success": false, "message": "Request already processed"})
+	}
+
+	database.DB.Model(&pcr).Updates(map[string]interface{}{
+		"status":      "rejected",
+		"admin_notes": req.AdminNotes,
+	})
+
+	return c.JSON(fiber.Map{"success": true, "message": "Plan change rejected"})
 }
 
 // isValidSubdomain checks if a subdomain is valid

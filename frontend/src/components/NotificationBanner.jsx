@@ -26,12 +26,14 @@ const typeConfig = {
 
 export default function NotificationBanner() {
   const [dismissed, setDismissed] = useState([])
+  const isSaaS = window.location.hostname.endsWith('.saas.proxrad.com') || window.location.hostname === 'saas.proxrad.com'
 
   const { data } = useQuery({
     queryKey: ['notification-banners-active'],
     queryFn: () => notificationBannerApi.getActive(),
     refetchInterval: 5 * 60 * 1000,
     staleTime: 60 * 1000,
+    enabled: !isSaaS,
   })
 
   const banners = data?.data?.data || []
