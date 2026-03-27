@@ -397,6 +397,11 @@ func (h *ResellerHandler) Update(c *fiber.Ctx) error {
 			resellerUpdates["rebrand_enabled"] = v
 		}
 	}
+	if val, ok := req["customer_change_plan"]; ok {
+		if v, ok := val.(bool); ok {
+			resellerUpdates["customer_change_plan"] = v
+		}
+	}
 	if val, ok := req["custom_domain"]; ok {
 		if v, ok := val.(string); ok {
 			resellerUpdates["custom_domain"] = strings.TrimSpace(strings.ToLower(v))
@@ -417,6 +422,11 @@ func (h *ResellerHandler) Update(c *fiber.Ctx) error {
 	if val, ok := req["wan_check_port"]; ok {
 		if v, ok := val.(bool); ok {
 			resellerUpdates["wan_check_port"] = v
+		}
+	}
+	if val, ok := req["wan_check_port_number"]; ok {
+		if v, ok := val.(float64); ok {
+			resellerUpdates["wan_check_port_number"] = int(v)
 		}
 	}
 	if len(resellerUpdates) > 0 {
@@ -1302,7 +1312,7 @@ func (h *ResellerHandler) GetSelfWanSettings(c *fiber.Ctx) error {
 	}
 
 	var reseller models.Reseller
-	if err := database.DB.Select("id, wan_check_enabled, wan_check_icmp, wan_check_port").
+	if err := database.DB.Select("id, wan_check_enabled, wan_check_icmp, wan_check_port, wan_check_port_number").
 		First(&reseller, *user.ResellerID).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"success": false, "message": "Reseller not found"})
 	}
@@ -1310,9 +1320,10 @@ func (h *ResellerHandler) GetSelfWanSettings(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"success": true,
 		"data": fiber.Map{
-			"wan_check_enabled": reseller.WanCheckEnabled,
-			"wan_check_icmp":    reseller.WanCheckICMP,
-			"wan_check_port":    reseller.WanCheckPort,
+			"wan_check_enabled":     reseller.WanCheckEnabled,
+			"wan_check_icmp":        reseller.WanCheckICMP,
+			"wan_check_port":        reseller.WanCheckPort,
+			"wan_check_port_number": reseller.WanCheckPortNumber,
 		},
 	})
 }
@@ -1348,6 +1359,11 @@ func (h *ResellerHandler) UpdateSelfWanSettings(c *fiber.Ctx) error {
 	if val, ok := req["wan_check_port"]; ok {
 		if v, ok := val.(bool); ok {
 			updates["wan_check_port"] = v
+		}
+	}
+	if val, ok := req["wan_check_port_number"]; ok {
+		if v, ok := val.(float64); ok {
+			updates["wan_check_port_number"] = int(v)
 		}
 	}
 

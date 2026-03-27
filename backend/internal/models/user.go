@@ -130,10 +130,14 @@ type Reseller struct {
 	RebrandEnabled        bool           `gorm:"column:rebrand_enabled;default:false" json:"rebrand_enabled"`
 	CustomDomain          string         `gorm:"column:custom_domain;size:255" json:"custom_domain"`
 
+	// Customer self-service (per-reseller)
+	CustomerChangePlan bool `gorm:"column:customer_change_plan;default:false" json:"customer_change_plan"`
+
 	// WAN Management Check (per-reseller override)
-	WanCheckEnabled *bool `gorm:"column:wan_check_enabled" json:"wan_check_enabled"` // nil=follow global, true=force on, false=force off
-	WanCheckICMP    bool  `gorm:"column:wan_check_icmp;default:true" json:"wan_check_icmp"`
-	WanCheckPort    bool  `gorm:"column:wan_check_port;default:true" json:"wan_check_port"`
+	WanCheckEnabled    *bool `gorm:"column:wan_check_enabled" json:"wan_check_enabled"` // nil=follow global, true=force on, false=force off
+	WanCheckICMP       bool  `gorm:"column:wan_check_icmp;default:true" json:"wan_check_icmp"`
+	WanCheckPort       bool  `gorm:"column:wan_check_port;default:true" json:"wan_check_port"`
+	WanCheckPortNumber int   `gorm:"column:wan_check_port_number;default:0" json:"wan_check_port_number"` // 0=use global, >0=custom port for this reseller
 
 	// Assigned NAS (many-to-many)
 	NASList         []ResellerNAS  `gorm:"-" json:"nas_list,omitempty"`

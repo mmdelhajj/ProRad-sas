@@ -2782,9 +2782,40 @@ export default function Settings() {
                           wan_check_enabled: resellerWanData.wan_check_enabled,
                           wan_check_icmp: resellerWanData.wan_check_icmp,
                           wan_check_port: e.target.checked,
+                          wan_check_port_number: resellerWanData.wan_check_port_number || 0,
                         })} />
                       WAN Port Check
                     </label>
+                  </div>
+                )}
+                {resellerWanData.wan_check_enabled !== false && (
+                  <div className="mt-2">
+                    <label className="block text-[12px] font-semibold text-gray-700 dark:text-gray-300 mb-1">Custom Management Port</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number" min="0" max="65535"
+                        defaultValue={resellerWanData.wan_check_port_number || ''}
+                        id="reseller-wan-port-input"
+                        placeholder="0 = use global port"
+                        className="input text-[12px] w-32"
+                      />
+                      <button
+                        onClick={() => {
+                          const portInput = document.getElementById('reseller-wan-port-input')
+                          const portVal = parseInt(portInput?.value) || 0
+                          saveResellerWanMutation.mutate({
+                            wan_check_enabled: resellerWanData.wan_check_enabled,
+                            wan_check_icmp: resellerWanData.wan_check_icmp,
+                            wan_check_port: resellerWanData.wan_check_port,
+                            wan_check_port_number: portVal,
+                          })
+                        }}
+                        className="btn btn-sm btn-primary text-[11px]"
+                      >
+                        Save Port
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-gray-400 mt-1">Set 0 to use the global admin port. Set a custom port (e.g. 8291) for your subscribers only.</p>
                   </div>
                 )}
               </div>

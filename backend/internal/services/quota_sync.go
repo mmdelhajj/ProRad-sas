@@ -235,9 +235,11 @@ type TimeSpeedState struct {
 
 // resellerWanConfig holds per-reseller WAN check settings
 type resellerWanConfig struct {
-	WanCheckEnabled *bool
-	WanCheckICMP    bool
-	WanCheckPort    bool
+	WanCheckEnabled    *bool
+	WanCheckICMP       bool
+	WanCheckPort       bool
+	WanCheckPortNumber int  // 0=use global, >0=custom port
+	ParentID           uint // parent reseller ID (0=direct admin reseller)
 }
 
 // QuotaSyncService handles periodic quota synchronization from MikroTik to database
@@ -311,13 +313,19 @@ func (s *QuotaSyncService) syncAllQuotas() {
 
 	// Load reseller WAN check settings for per-reseller overrides
 	var resellersForWan []models.Reseller
-	database.DB.Select("id, wan_check_enabled, wan_check_icmp, wan_check_port").Find(&resellersForWan)
+	database.DB.Select("id, parent_id, wan_check_enabled, wan_check_icmp, wan_check_port, wan_check_port_number").Find(&resellersForWan)
 	s.resellerWanMap = make(map[uint]resellerWanConfig)
 	for _, r := range resellersForWan {
+		parentID := uint(0)
+		if r.ParentID != nil {
+			parentID = *r.ParentID
+		}
 		s.resellerWanMap[r.ID] = resellerWanConfig{
-			WanCheckEnabled: r.WanCheckEnabled,
-			WanCheckICMP:    r.WanCheckICMP,
-			WanCheckPort:    r.WanCheckPort,
+			WanCheckEnabled:    r.WanCheckEnabled,
+			WanCheckICMP:       r.WanCheckICMP,
+			WanCheckPort:       r.WanCheckPort,
+			WanCheckPortNumber: r.WanCheckPortNumber,
+			ParentID:           parentID,
 		}
 	}
 
@@ -2276,19 +2284,30 @@ func (s *QuotaSyncService) checkWanManagement(client *mikrotik.Client, nas *mode
 	runICMP := isWanCheckICMPEnabled()
 	runPort := isWanCheckPortEnabled()
 
-	// Per-reseller override: check if reseller has its own WAN check setting
+	// Per-reseller override: check reseller's own setting, then parent reseller, then global
 	if sub.ResellerID > 0 {
-		if cfg, ok := s.resellerWanMap[sub.ResellerID]; ok {
+		// Find the effective config: reseller → parent reseller → global
+		cfg, hasCfg := s.resellerWanMap[sub.ResellerID]
+
+		// If reseller is "Follow Global" (nil), check parent reseller
+		if hasCfg && cfg.WanCheckEnabled == nil && cfg.ParentID > 0 {
+			if parentCfg, ok := s.resellerWanMap[cfg.ParentID]; ok {
+				cfg = parentCfg
+				hasCfg = true
+			}
+		}
+
+		if hasCfg {
 			if cfg.WanCheckEnabled != nil {
 				if !*cfg.WanCheckEnabled {
-					// Reseller explicitly disabled WAN check — skip
+					// Reseller/parent explicitly disabled WAN check — skip
 					if sub.WanCheckStatus != "skipped" {
 						database.DB.Model(&models.Subscriber{}).Where("id = ?", sub.ID).
 							Updates(map[string]interface{}{"wan_check_status": "skipped", "port_open": false})
 					}
 					return false
 				}
-				// Reseller explicitly enabled — override global
+				// Reseller/parent explicitly enabled — override global
 				enabled = true
 			}
 			// Per-reseller ICMP/port toggles override global
@@ -2343,6 +2362,18 @@ func (s *QuotaSyncService) checkWanManagement(client *mikrotik.Client, nas *mode
 
 	// ----- Perform the actual check -----
 	port := getWanCheckPort()
+	// Per-reseller port override (check reseller, then parent)
+	if sub.ResellerID > 0 {
+		if cfg, ok := s.resellerWanMap[sub.ResellerID]; ok {
+			if cfg.WanCheckPortNumber > 0 {
+				port = cfg.WanCheckPortNumber
+			} else if cfg.ParentID > 0 {
+				if parentCfg, ok := s.resellerWanMap[cfg.ParentID]; ok && parentCfg.WanCheckPortNumber > 0 {
+					port = parentCfg.WanCheckPortNumber
+				}
+			}
+		}
+	}
 
 	// For failed users being re-checked: temporarily restore speed so
 	// /tool/fetch can get through the 1k/1k throttle to test the port.

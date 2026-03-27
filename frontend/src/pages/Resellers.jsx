@@ -59,10 +59,12 @@ export default function Resellers() {
     permission_group: '',
     notes: '',
     rebrand_enabled: false,
+    customer_change_plan: false,
     custom_domain: '',
     wan_check_enabled: null,
     wan_check_icmp: true,
     wan_check_port: true,
+    wan_check_port_number: 0,
   })
 
   const { data: resellers, isLoading } = useQuery({
@@ -257,10 +259,12 @@ export default function Resellers() {
         permission_group: reseller.permission_group || '',
         notes: reseller.notes || '',
         rebrand_enabled: reseller.rebrand_enabled || false,
+        customer_change_plan: reseller.customer_change_plan || false,
         custom_domain: reseller.custom_domain || '',
         wan_check_enabled: reseller.wan_check_enabled ?? null,
         wan_check_icmp: reseller.wan_check_icmp ?? true,
         wan_check_port: reseller.wan_check_port ?? true,
+        wan_check_port_number: reseller.wan_check_port_number || 0,
       })
     } else {
       setEditingReseller(null)
@@ -280,10 +284,12 @@ export default function Resellers() {
         permission_group: '',
         notes: '',
         rebrand_enabled: false,
+        customer_change_plan: false,
         custom_domain: '',
         wan_check_enabled: null,
         wan_check_icmp: true,
         wan_check_port: true,
+        wan_check_port_number: 0,
       })
     }
     setShowModal(true)
@@ -784,6 +790,11 @@ export default function Resellers() {
                           onChange={e => setFormData(p => ({ ...p, rebrand_enabled: e.target.checked }))} />
                         Enable Rebranding
                       </label>
+                      <label className="flex items-center gap-2 text-[12px]">
+                        <input type="checkbox" id="customer_change_plan" checked={formData.customer_change_plan || false}
+                          onChange={e => setFormData(p => ({ ...p, customer_change_plan: e.target.checked }))} />
+                        Allow Customer Self-Service Plan Change
+                      </label>
                     </div>
                     <div className="mt-2">
                       <label className="label">Custom Domain</label>
@@ -825,6 +836,12 @@ export default function Resellers() {
                               onChange={e => setFormData(p => ({ ...p, wan_check_port: e.target.checked }))} />
                             WAN Port Check
                           </label>
+                          <div className="mt-1">
+                            <label className="text-[11px] text-gray-500">Custom Port (0 = use global)</label>
+                            <input type="number" min="0" max="65535" value={formData.wan_check_port_number || 0}
+                              onChange={e => setFormData(p => ({ ...p, wan_check_port_number: parseInt(e.target.value) || 0 }))}
+                              className="input text-[12px] mt-0.5" placeholder="0" />
+                          </div>
                         </div>
                       )}
                     </div>
