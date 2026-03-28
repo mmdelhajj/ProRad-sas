@@ -214,11 +214,18 @@ func (h *SSLHandler) InstallSSL(c *fiber.Ctx) error {
 			send("✓ docker-compose.yml updated with port 443")
 		}
 
-		// Restart frontend container (NOT docker compose up -d — that creates new networks
-		// which steal routes to MikroTik IPs in the same subnet)
+		// Recreate frontend container to pick up new port 443 mapping
+		// Use docker compose up -d frontend (only frontend, not all services)
+		// to avoid network recreation that could steal MikroTik routes
 		send("🔄 Restarting nginx with SSL (brief downtime ~5 seconds)...")
-		exec.Command("docker", "restart", "proxpanel-frontend").Run() //nolint
-		time.Sleep(3 * time.Second)
+		recreateCmd := exec.Command("nsenter", "-t", "1", "-m", "-u", "-n", "-i", "--",
+			"bash", "-c", "cd /opt/proxpanel && docker compose up -d --force-recreate frontend 2>&1")
+		if out, err := recreateCmd.CombinedOutput(); err != nil {
+			send("⚠️  Container recreate warning: " + string(out))
+			// Fallback to simple restart
+			exec.Command("docker", "restart", "proxpanel-frontend").Run() //nolint
+		}
+		time.Sleep(5 * time.Second)
 		send("✓ nginx restarted with SSL")
 
 		// Set up auto-renewal cron
@@ -252,7 +259,11 @@ func (h *SSLHandler) InstallSSL(c *fiber.Ctx) error {
 
 // addAcmeChallengeToNginx adds the ACME challenge proxy location to nginx.conf
 func (h *SSLHandler) addAcmeChallengeToNginx() error {
-	confPath := "/opt/proxpanel/nginx.conf"
+	// Try both paths — container mounts may vary
+	confPath := "/opt/proxpanel/frontend/nginx.conf"
+	if _, err := os.Stat(confPath); os.IsNotExist(err) {
+		confPath = "/opt/proxpanel/nginx.conf"
+	}
 	content, err := os.ReadFile(confPath)
 	if err != nil {
 		return err
@@ -292,7 +303,11 @@ func (h *SSLHandler) writeSSLNginxConfTo(domain, path string) error {
 	if _, err := os.Stat(path); err != nil {
 		return err // skip if file doesn't exist
 	}
-	content, err := os.ReadFile("/opt/proxpanel/nginx.conf")
+	confPath := "/opt/proxpanel/frontend/nginx.conf"
+	if _, err := os.Stat(confPath); os.IsNotExist(err) {
+		confPath = "/opt/proxpanel/nginx.conf"
+	}
+	content, err := os.ReadFile(confPath)
 	if err != nil {
 		return err
 	}
@@ -327,7 +342,10 @@ func (h *SSLHandler) updateDockerComposeForSSL() error {
 
 // writeSSLNginxConf writes a new nginx.conf with SSL support
 func (h *SSLHandler) writeSSLNginxConf(domain string) error {
-	confPath := "/opt/proxpanel/nginx.conf"
+	confPath := "/opt/proxpanel/frontend/nginx.conf"
+	if _, err := os.Stat(confPath); os.IsNotExist(err) {
+		confPath = "/opt/proxpanel/nginx.conf"
+	}
 	existing, err := os.ReadFile(confPath)
 	if err != nil {
 		return err
